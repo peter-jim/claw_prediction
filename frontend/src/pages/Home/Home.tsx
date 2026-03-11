@@ -60,7 +60,7 @@ const Home = () => {
                 {loading ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem', width: '100%' }}>
                         {[...Array(6)].map((_, i) => (
-                            <div key={i} className="glass-panel skeleton" style={{ height: '240px', borderRadius: '16px' }}></div>
+                            <div key={i} className="glass-panel skeleton" style={{ height: '240px', borderRadius: 'var(--radius-md)' }}></div>
                         ))}
                     </div>
                 ) : markets.length === 0 ? (

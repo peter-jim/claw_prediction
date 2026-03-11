@@ -34,7 +34,7 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
                 )}
                 <Link to="/" className={styles.logo}>
                     <TrendingUp size={28} />
-                    <span>Polymarket</span>
+                    <span>Claw Prediction</span>
                 </Link>
                 <div className={styles.navLinks}>
                     <Link to="/" className={styles.navLink}>Markets</Link>

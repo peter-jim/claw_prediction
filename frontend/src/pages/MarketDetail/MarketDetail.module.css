@@ -3,10 +3,11 @@
     grid-template-columns: minmax(0, 1fr) 350px;
     gap: 2rem;
     padding: 2rem;
-    max-width: 1280px;
+    max-width: 1440px; /* Neo-Minimalism standard */
     margin: 0 auto;
     color: white;
 }
+
 
 .leftColumn {
     display: flex;
@@ -54,12 +55,14 @@
 }
 
 .title {
-    font-size: 1.75rem;
-    font-weight: 600;
-    line-height: 1.3;
+    font-size: 2.25rem;
+    font-weight: 700;
+    line-height: 1.2;
     margin-bottom: 0.75rem;
     color: #f9fafb;
+    font-family: var(--font-display);
 }
+
 
 .badges {
     display: flex;
@@ -94,17 +97,16 @@
 
 /* Chart */
 .chartContainer {
-    background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-xl);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-sm);
 }
+
 
 .chartHeader {
     display: flex;
@@ -171,14 +173,13 @@
 
 /* Content Tabs */
 .contentSection {
-    background: var(--glass-bg);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-xl);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
     overflow: hidden;
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-sm);
 }
+
 
 .tabs {
     display: flex;
@@ -357,20 +358,18 @@
 }
 
 .tradingPanel {
-    background: var(--glass-bg);
-    backdrop-filter: blur(32px) saturate(150%);
-    -webkit-backdrop-filter: blur(32px) saturate(150%);
-    border: 1px solid var(--glass-border);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-xl);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
     padding: 1.5rem;
     position: sticky;
     top: calc(72px + 2rem);
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-md);
 }
+
 
 .tradeHeader {
     display: flex;
@@ -495,10 +494,11 @@
 
 .yesSelected {
     background: var(--accent-green-bg);
-    border-color: var(--accent-green-border);
-    color: var(--accent-green-bright);
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+    box-shadow: 0 0 12px var(--accent-green-glow);
 }
+
 
 .yesSelected .outcomeName {
     color: var(--accent-green-bright);
@@ -507,10 +507,11 @@
 
 .noSelected {
     background: var(--accent-red-bg);
-    border-color: var(--accent-red-border);
-    color: var(--accent-red-bright);
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+    box-shadow: 0 0 12px var(--accent-red-glow);
 }
+
 
 .noSelected .outcomeName {
     color: var(--accent-red-bright);
