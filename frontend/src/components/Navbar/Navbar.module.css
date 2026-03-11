@@ -20,6 +20,20 @@
     gap: 2.5rem;
 }
 
+.mobileMenuBtn {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.2s ease;
+}
+
+.mobileMenuBtn:hover {
+    color: var(--accent-blue);
+}
+
 .logo {
     display: flex;
     align-items: center;

@@ -37,6 +37,7 @@ async function initializeSchema(db: any) {
             imageUrl TEXT,
             endTime INTEGER,
             status INTEGER DEFAULT 0,
+            resolvedOutcome INTEGER DEFAULT 0,
             yesPrice INTEGER DEFAULT 50,
             noPrice INTEGER DEFAULT 50,
             volume TEXT DEFAULT '0 ETH',
@@ -64,6 +65,11 @@ async function initializeSchema(db: any) {
             low INTEGER NOT NULL,
             close INTEGER NOT NULL,
             UNIQUE(marketId, timeframe, timestamp)
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_state (
+            key TEXT PRIMARY KEY,
+            value INTEGER NOT NULL
         );
     `);
 }

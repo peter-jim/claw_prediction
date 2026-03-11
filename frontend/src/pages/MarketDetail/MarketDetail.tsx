@@ -6,7 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { ArrowLeft, TrendingUp, Clock } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useApi, type MarketResponse } from '../../services/api';
-import { useBuyShares, usePosition } from '../../hooks/useContract';
+import { useBuyShares, useSellShares, usePosition, useQuoteBuy, useQuoteSell } from '../../hooks/useContract';
 import { PREDICTION_MARKET_ADDRESS, PREDICTION_MARKET_ABI } from '../../config/contract';
 import styles from './MarketDetail.module.css';
 
@@ -24,11 +24,17 @@ const MarketDetail = () => {
     const [side, setSide] = useState<'buy' | 'sell'>('buy');
     const [outcome, setOutcome] = useState<'Yes' | 'No'>('Yes');
     const [amount, setAmount] = useState('');
+    const [slippage, setSlippage] = useState('0.5'); // 0.5% default slippage
     const [tradeMessage, setTradeMessage] = useState('');
     const [chartData, setChartData] = useState<Array<{time: string, price: number}>>([]);
 
-    const { buy, isPending, isConfirming, isSuccess: isBuySuccess, error: buyError } = useBuyShares();
+    const { buy, isPending: isBuyPending, isConfirming: isBuyConfirming, isSuccess: isBuySuccess, error: buyError } = useBuyShares();
+    const { sell, isPending: isSellPending, isConfirming: isSellConfirming, isSuccess: isSellSuccess, error: sellError } = useSellShares();
     const { data: posData } = usePosition(id ? BigInt(id) : BigInt(0), address);
+
+    const amountWei = amount && !isNaN(Number(amount)) ? ethers.parseEther(amount) : 0n;
+    const { data: quoteBuyData } = useQuoteBuy(id ? BigInt(id) : 0n, outcome, side === 'buy' ? amount : '');
+    const { data: quoteSellData } = useQuoteSell(id ? BigInt(id) : 0n, outcome, side === 'sell' ? amountWei : 0n);
 
     const { writeContract: writeClaim, data: claimHash, isPending: isClaiming } = useWriteContract();
     const { isSuccess: isClaimSuccess } = useWaitForTransactionReceipt({ hash: claimHash });
@@ -69,21 +75,43 @@ const MarketDetail = () => {
 
     // Watch for trade success
     useEffect(() => {
-        if (isBuySuccess) {
-            setTradeMessage(`Successfully bought shares!`);
+        if (isBuySuccess || isSellSuccess) {
+            setTradeMessage(`Successfully ${isBuySuccess ? 'bought' : 'sold'}!`);
             setAmount('');
         }
-    }, [isBuySuccess]);
+    }, [isBuySuccess, isSellSuccess]);
 
     useEffect(() => {
-        if (buyError) {
-            setTradeMessage(`Trade failed: ${buyError.message.substring(0, 60)}`);
-        }
-    }, [buyError]);
+        if (buyError) setTradeMessage(`Trade failed: ${buyError.message.substring(0, 60)}`);
+        if (sellError) setTradeMessage(`Trade failed: ${sellError.message.substring(0, 60)}`);
+    }, [buyError, sellError]);
 
-    const currentPrice = outcome === 'Yes' ? (market?.yesPrice ?? 50) : (market?.noPrice ?? 50);
-    const estShares = amount ? (parseFloat(amount) / (currentPrice / 100)).toFixed(2) : '0.00';
-    const potReturn = amount ? ((parseFloat(estShares) - parseFloat(amount)) / parseFloat(amount) * 100).toFixed(2) : '0.00';
+    const isPending = side === 'buy' ? isBuyPending : isSellPending;
+    const isConfirming = side === 'buy' ? isBuyConfirming : isSellConfirming;
+
+    // Quoting Calculations
+    let estOutputDisplay = '0.00';
+    let minOutputRaw = 0n;
+
+    if (side === 'buy' && quoteBuyData) {
+        // quoteBuyData is expected shares out (gross).
+        const sharesOut = Number(ethers.formatEther(quoteBuyData));
+        estOutputDisplay = sharesOut.toFixed(2);
+        
+        // Slippage deduction
+        const slippageMultiplier = 1 - (parseFloat(slippage) / 100);
+        const minSharesNum = sharesOut * slippageMultiplier;
+        minOutputRaw = ethers.parseEther(minSharesNum.toFixed(18));
+    } else if (side === 'sell' && quoteSellData) {
+        // quoteSellData is expected ETH out (gross). Fee is 0.2% (20 bps).
+        const grossEth = Number(ethers.formatEther(quoteSellData));
+        const netEth = grossEth * (1 - 0.002);
+        estOutputDisplay = netEth.toFixed(4);
+
+        const slippageMultiplier = 1 - (parseFloat(slippage) / 100);
+        const minPayoutNum = netEth * slippageMultiplier;
+        minOutputRaw = ethers.parseEther(minPayoutNum.toFixed(18));
+    }
 
     const priceChange = chartData.length >= 2
         ? chartData[chartData.length - 1].price - chartData[0].price
@@ -96,8 +124,12 @@ const MarketDetail = () => {
         if (isNaN(amountNum) || amountNum <= 0) return;
 
         setTradeMessage('');
-        buy(BigInt(market.id), outcome, amount);
-    }, [amount, market, isConnected, outcome, buy]);
+        if (side === 'buy') {
+            buy(BigInt(market.id), outcome, amount, minOutputRaw);
+        } else {
+            sell(BigInt(market.id), outcome, amountWei, minOutputRaw);
+        }
+    }, [amount, market, isConnected, outcome, side, buy, sell, minOutputRaw, amountWei]);
 
     const handleClaim = () => {
         if (!id) return;
@@ -143,7 +175,6 @@ const MarketDetail = () => {
     // Assuming status === 1 means resolved. We will need resolvedOutcome to know who won.
     // For now, if the user has shares in the winning side, show claim.
     const isResolved = market.status === 1;
-    // @ts-ignore - The API will eventually need to return resolvedOutcome (0=None, 1=Yes, 2=No)
     const resolvedOutcome = market.resolvedOutcome || 0; 
     
     let hasWinningShares = false;
@@ -342,9 +373,16 @@ const MarketDetail = () => {
                             </div>
 
                             <div className={styles.amountSection}>
-                                <label className={styles.amountLabel}>Amount</label>
+                                <div className={styles.amountLabelRow}>
+                                    <label className={styles.amountLabel}>Amount</label>
+                                    {side === 'sell' && posData && (
+                                        <span className={styles.balanceLabel}>
+                                            Max: {ethers.formatEther(outcome === 'Yes' ? posData[0] : posData[1])}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className={styles.amountInput}>
-                                    <span className={styles.currencySymbol}>Ξ</span>
+                                    {side === 'buy' && <span className={styles.currencySymbol}>Ξ</span>}
                                     <input
                                         type="number"
                                         placeholder="0"
@@ -354,25 +392,48 @@ const MarketDetail = () => {
                                         step="0.01"
                                         min="0"
                                     />
-                                    <span className={styles.currencyLabel}>ETH</span>
+                                    <span className={styles.currencyLabel}>{side === 'buy' ? 'ETH' : 'Shares'}</span>
                                 </div>
                                 <div className={styles.quickAmounts}>
-                                    {['0.01', '0.05', '0.1', '0.5'].map(v => (
-                                        <button key={v} className={styles.quickBtn} onClick={() => setAmount(v)}>
-                                            {v} ETH
-                                        </button>
-                                    ))}
+                                    {side === 'buy' ? (
+                                        ['0.01', '0.05', '0.1', '0.5'].map(v => (
+                                            <button key={v} className={styles.quickBtn} onClick={() => setAmount(v)}>
+                                                {v} ETH
+                                            </button>
+                                        ))
+                                    ) : (
+                                        ['10', '50', '100', 'Max'].map(v => (
+                                            <button key={v} className={styles.quickBtn} onClick={() => {
+                                                if (v === 'Max' && posData) {
+                                                    setAmount(ethers.formatEther(outcome === 'Yes' ? posData[0] : posData[1]));
+                                                } else {
+                                                    setAmount(v);
+                                                }
+                                            }}>
+                                                {v}
+                                            </button>
+                                        ))
+                                    )}
                                 </div>
                             </div>
 
                             <div className={styles.tradeInfo}>
                                 <div className={styles.infoRow}>
-                                    <span>Est. Shares</span>
-                                    <span className={styles.infoValue}>{estShares}</span>
+                                    <span>{side === 'buy' ? 'Est. Shares Received' : 'Est. ETH Payout (Net)'}</span>
+                                    <span className={styles.infoValue}>{estOutputDisplay} {side === 'buy' ? '' : 'ETH'}</span>
                                 </div>
                                 <div className={styles.infoRow}>
-                                    <span>Potential return</span>
-                                    <span className={styles.infoValue}>{amount ? `${estShares} ETH (${potReturn}%)` : '0 ETH (0%)'}</span>
+                                    <span>Slippage Tolerance</span>
+                                    <select 
+                                        className={styles.slippageSelect} 
+                                        value={slippage} 
+                                        onChange={(e) => setSlippage(e.target.value)}
+                                    >
+                                        <option value="0.1">0.1%</option>
+                                        <option value="0.5">0.5%</option>
+                                        <option value="1.0">1.0%</option>
+                                        <option value="2.0">2.0%</option>
+                                    </select>
                                 </div>
                             </div>
 

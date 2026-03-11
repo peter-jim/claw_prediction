@@ -6,19 +6,68 @@ import { getDb } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Load deployment info and ABI
-const deploymentsDir = path.join(__dirname, '..', '..', 'contracts', 'deployments');
-const deploymentInfo = JSON.parse(fs.readFileSync(path.join(deploymentsDir, 'localhost.json'), 'utf-8'));
-const abi = JSON.parse(fs.readFileSync(path.join(deploymentsDir, 'PredictionMarketABI.json'), 'utf-8'));
+// Load deployment info from the shared workspace
+const deploymentPath = path.join(__dirname, '../../contracts/deployments/localhost.json');
+export let CONTRACT_ADDRESS = '';
+if (fs.existsSync(deploymentPath)) {
+    const deployment = JSON.parse(fs.readFileSync(deploymentPath, 'utf8'));
+    CONTRACT_ADDRESS = deployment.address;
+    console.log(`Loaded V2 proxy contract address: ${CONTRACT_ADDRESS}`);
+} else {
+    console.warn("Deployment info not found. Did you run deploy.ts?");
+}
 
-export const CONTRACT_ADDRESS = deploymentInfo.address;
-export const CONTRACT_ABI = abi;
+// ABI matching V2 implementation
+const CONTRACT_ABI = [
+    "event MarketCreated(uint256 indexed marketId, string title, string category, uint256 endTime, address creator)",
+    "event SharesBought(uint256 indexed marketId, address indexed buyer, uint8 outcome, uint256 shares, uint256 cost)",
+    "event SharesSold(uint256 indexed marketId, address indexed seller, uint8 outcome, uint256 shares, uint256 payout)",
+    "event MarketResolved(uint256 indexed marketId, uint8 outcome)",
+    "function getMarket(uint256) view returns (uint256 id, string memory title, string memory description, string memory category, string memory imageUrl, uint256 endTime, uint8 status, uint8 resolvedOutcome, uint256 yesShares, uint256 noShares, uint256 yesPool, uint256 noPool, address creator, uint256 createdAt)",
+    "function getMarketCount() view returns (uint256)",
+    "function getYesPrice(uint256) view returns (uint256)",
+    "function getNoPrice(uint256) view returns (uint256)",
+    "function getPoolReserves(uint256) view returns (uint256 yesPool, uint256 noPool, uint256 totalLp)"
+];
 
 // Connect to Hardhat network
 const provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
 export const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
 export { provider };
+
+export async function startIndexer() {
+    const db = await getDb();
+    
+    // Check for last synced block
+    let lastSyncedBlock = 0;
+    const syncState = await db.get(`SELECT value FROM sync_state WHERE key = 'lastSyncedBlock'`);
+    if (syncState) {
+        lastSyncedBlock = syncState.value;
+    }
+
+    // Determine current block
+    const currentBlock = await provider.getBlockNumber();
+    
+    // Fetch historical events from lastSyncedBlock to currentBlock
+    if (lastSyncedBlock === 0) {
+        console.log('Starting indexer from scratch... syncing past markets via getter.');
+        // Ensure indexer initializes basic structure first
+        try {
+            const count = await contract.getMarketCount();
+            for (let i = 0; i < Number(count); i++) {
+                await syncMarketInfo(i.toString());
+            }
+        } catch (e) {
+            console.error("Failed to fetch market count, indexer continuing...", e);
+        }
+    }
+
+    const fromBlock = Math.max(0, lastSyncedBlock - 100); // overlap for safety
+    console.log(`Syncing historical events from block ${fromBlock} to ${currentBlock}...`);
+
+    await syncHistoricalEvents(fromBlock, currentBlock);
+}
 
 // ─── Indexer Logic ─────────────────────────────────────────
 
@@ -39,16 +88,18 @@ async function syncMarketInfo(marketId: string) {
     const vol = formatVolume(m.yesPool + m.noPool);
 
     await db.run(`
-        INSERT INTO markets (id, title, description, category, imageUrl, endTime, status, yesPrice, noPrice, volume, yesPool, noPool)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO markets (id, title, description, category, imageUrl, endTime, status, resolvedOutcome, yesPrice, noPrice, volume, yesPool, noPool)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             status = excluded.status,
+            resolvedOutcome = excluded.resolvedOutcome,
             yesPrice = excluded.yesPrice,
             noPrice = excluded.noPrice,
             volume = excluded.volume,
             yesPool = excluded.yesPool,
             noPool = excluded.noPool
     `, [
+
         marketId.toString(),
         m.title,
         m.description,
@@ -56,12 +107,14 @@ async function syncMarketInfo(marketId: string) {
         m.imageUrl,
         Number(m.endTime),
         Number(m.status),
+        Number(m.resolvedOutcome),
         yesPriceRounded,
         noPriceRounded,
         vol,
         m.yesPool.toString(),
         m.noPool.toString()
     ]);
+
     
     return { yesPriceRounded, noPriceRounded };
 }
@@ -109,34 +162,88 @@ async function handleTradeEvent(marketId: bigint, buyer: string, outcome: bigint
     }
 }
 
-export async function startIndexer() {
-    console.log('Starting indexer... syncing past markets.');
-    const count = await contract.getMarketCount();
-    for (let i = 0; i < Number(count); i++) {
-        await syncMarketInfo(i.toString());
+async function syncHistoricalEvents(fromBlock: number, toBlock: number) {
+    const db = await getDb();
+    const logs = await provider.getLogs({
+        address: await contract.getAddress(),
+        fromBlock,
+        toBlock
+    });
+
+    for (const log of logs) {
+        try {
+            const parsed = contract.interface.parseLog(log);
+            if (!parsed) continue;
+
+            if (parsed.name === 'MarketCreated') {
+                const marketId = parsed.args[0] as bigint;
+                await syncMarketInfo(marketId.toString());
+            } else if (parsed.name === 'SharesBought') {
+                const marketId = parsed.args[0] as bigint;
+                const buyer = parsed.args[1] as string;
+                const outcome = parsed.args[2] as bigint;
+                const amountObtained = parsed.args[3] as bigint;
+                const ethCost = parsed.args[4] as bigint;
+                await handleTradeEvent(marketId, buyer, outcome, amountObtained, ethCost, { blockNumber: log.blockNumber });
+            } else if (parsed.name === 'SharesSold') {
+                const marketId = parsed.args[0] as bigint;
+                const seller = parsed.args[1] as string;
+                const outcome = parsed.args[2] as bigint;
+                const amountSold = parsed.args[3] as bigint;
+                const payout = parsed.args[4] as bigint;
+                await handleTradeEvent(marketId, seller, outcome, amountSold, payout, { blockNumber: log.blockNumber });
+            } else if (parsed.name === 'MarketResolved') {
+                const marketId = parsed.args[0] as bigint;
+                await syncMarketInfo(marketId.toString());
+            }
+
+        } catch (e) {
+            // Log might not belong to a known event
+        }
     }
 
-    console.log('Listening for new events...');
+    // Update synced block
+    await db.run(`
+        INSERT INTO sync_state (key, value) VALUES ('lastSyncedBlock', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `, [toBlock]);
 
-    contract.on(contract.getEvent('MarketCreated'), async (marketId: bigint) => {
+    console.log('Historical sync complete. Listening for new events...');
+
+    // Utility to update sync state on every new event
+    const updateSyncState = async (event: any) => {
+        if (event && event.log && event.log.blockNumber) {
+            await db.run(`
+                INSERT INTO sync_state (key, value) VALUES ('lastSyncedBlock', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            `, [event.log.blockNumber]);
+        }
+    };
+
+    contract.on('MarketCreated', async (marketId: bigint, ...args) => {
+        const event = args[args.length - 1]; // ethers v6 events are at the end
         console.log(`[Indexer] MarketCreated: ${marketId}`);
         await syncMarketInfo(marketId.toString());
+        await updateSyncState(event);
     });
 
-    contract.on(contract.getEvent('SharesBought'), async (marketId: bigint, buyer: string, outcome: bigint, shares: bigint, cost: bigint, event) => {
+    contract.on('SharesBought', async (marketId: bigint, buyer: string, outcome: bigint, amountObtained: bigint, ethCost: bigint, event) => {
         console.log(`[Indexer] SharesBought: Market ${marketId} by ${buyer}`);
-        await handleTradeEvent(marketId, buyer, outcome, shares, cost, event);
+        await handleTradeEvent(marketId, buyer, outcome, amountObtained, ethCost, event);
+        await updateSyncState(event);
     });
 
-    contract.on(contract.getEvent('SharesSold'), async (marketId: bigint, seller: string, outcome: bigint, shares: bigint, payout: bigint, event) => {
+    contract.on('SharesSold', async (marketId: bigint, seller: string, outcome: bigint, amountSold: bigint, ethReceived: bigint, event) => {
         console.log(`[Indexer] SharesSold: Market ${marketId} by ${seller}`);
-        // Treat as a trade for charting and history purposes
-        await handleTradeEvent(marketId, seller, outcome, shares, payout, event);
+        await handleTradeEvent(marketId, seller, outcome, amountSold, ethReceived, event);
+        await updateSyncState(event);
     });
 
-    contract.on(contract.getEvent('MarketResolved'), async (marketId: bigint) => {
+    contract.on('MarketResolved', async (marketId: bigint, ...args) => {
+        const event = args[args.length - 1];
         console.log(`[Indexer] MarketResolved: ${marketId}`);
         await syncMarketInfo(marketId.toString());
+        await updateSyncState(event);
     });
 }
 

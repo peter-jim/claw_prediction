@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import fs from "fs";
 import path from "path";
 
@@ -8,11 +8,17 @@ async function main() {
   console.log("Account balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)), "ETH");
 
   const PredictionMarket = await ethers.getContractFactory("PredictionMarket");
-  const market = await PredictionMarket.deploy();
+  // Deploying as UUPS Proxy
+  const market = await upgrades.deployProxy(PredictionMarket, [
+    deployer.address, // initialOwner
+    deployer.address, // oracle
+    deployer.address  // treasury
+  ], { kind: 'uups' });
+  
   await market.waitForDeployment();
 
   const address = await market.getAddress();
-  console.log("PredictionMarket deployed to:", address);
+  console.log("PredictionMarket Proxy deployed to:", address);
 
   // Save deployment info for frontend and backend
   const deploymentInfo = {
@@ -186,11 +192,12 @@ async function seedMarkets(market: any) {
     const [yesMultiplier, noMultiplier] = liquidityRatios[i];
     const yesAmount = ethers.parseEther(yesMultiplier.toString());
     const noAmount = ethers.parseEther(noMultiplier.toString());
-
+    const deadline = now + 86400; // 1 day deadline
+    
     // User1 buys Yes
-    await market.connect(user1).buyShares(i, 1, { value: yesAmount }); // 1 = Yes
+    await market.connect(user1).buyShares(i, 1, 0, deadline, { value: yesAmount }); // 1 = Yes
     // User2 buys No
-    await market.connect(user2).buyShares(i, 2, { value: noAmount }); // 2 = No
+    await market.connect(user2).buyShares(i, 2, 0, deadline, { value: noAmount }); // 2 = No
     console.log(`  Seeded liquidity for market ${i}: Yes=${yesMultiplier} ETH, No=${noMultiplier} ETH`);
   }
 

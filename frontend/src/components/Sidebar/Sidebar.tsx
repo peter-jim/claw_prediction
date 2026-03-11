@@ -4,6 +4,7 @@ import styles from './Sidebar.module.css';
 
 interface SidebarProps {
     className?: string;
+    onClose?: () => void;
 }
 
 const CATEGORIES = [
@@ -16,7 +17,7 @@ const CATEGORIES = [
     { id: 'pop culture', path: '/?category=Pop Culture', label: 'Pop Culture', icon: Film },
 ];
 
-const Sidebar = ({ className }: SidebarProps) => {
+const Sidebar = ({ className, onClose }: SidebarProps) => {
     const [searchParams] = useSearchParams();
     const activeCategory = searchParams.get('category')?.toLowerCase() || 'home';
 
@@ -34,6 +35,7 @@ const Sidebar = ({ className }: SidebarProps) => {
                                 to={cat.path}
                                 className={`${styles.menuItem} ${isActive ? styles.active : ''}`}
                                 style={{ textDecoration: 'none' }}
+                                onClick={onClose}
                             >
                                 <Icon size={18} className={styles.icon} />
                                 <span>{cat.label}</span>

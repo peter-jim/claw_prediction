@@ -1,11 +1,15 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Search, TrendingUp } from 'lucide-react';
+import { Search, TrendingUp, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useNetwork } from '../../contexts/NetworkContext';
 import styles from './Navbar.module.css';
 
-const Navbar = () => {
+interface NavbarProps {
+    onMenuClick?: () => void;
+}
+
+const Navbar = ({ onMenuClick }: NavbarProps) => {
     const [searchQuery, setSearchQuery] = useState('');
     const navigate = useNavigate();
     const { isMockMode, toggleMockMode } = useNetwork();
@@ -23,6 +27,11 @@ const Navbar = () => {
     return (
         <nav className={styles.navbar}>
             <div className={styles.left}>
+                {onMenuClick && (
+                    <button className={styles.mobileMenuBtn} onClick={onMenuClick} aria-label="Toggle menu">
+                        <Menu size={24} />
+                    </button>
+                )}
                 <Link to="/" className={styles.logo}>
                     <TrendingUp size={28} />
                     <span>Polymarket</span>

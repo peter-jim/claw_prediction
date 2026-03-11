@@ -39,49 +39,136 @@ export function useNoPrice(marketId: bigint) {
   });
 }
 
+import { useState } from 'react';
+import { useNetwork } from '../contexts/NetworkContext';
+
 export function usePosition(marketId: bigint, userAddress: `0x${string}` | undefined) {
-  return useReadContract({
+  const { isMockMode } = useNetwork();
+  
+  const result = useReadContract({
     address: PREDICTION_MARKET_ADDRESS,
     abi: PREDICTION_MARKET_ABI,
     functionName: 'getPosition',
     args: userAddress ? [marketId, userAddress] : undefined,
-    query: { enabled: !!userAddress },
+    query: { enabled: !!userAddress && !isMockMode },
   });
+
+  if (isMockMode) {
+    return { data: [BigInt(550 * 10**18), 0n, 0n, 0n] as any, error: null, isPending: false };
+  }
+  return result;
+}
+
+export function useQuoteBuy(marketId: bigint, outcome: 'Yes' | 'No', amountEth: string) {
+  const { isMockMode } = useNetwork();
+  const value = amountEth && !isNaN(Number(amountEth)) ? parseEther(amountEth) : 0n;
+  
+  const result = useReadContract({
+    address: PREDICTION_MARKET_ADDRESS,
+    abi: PREDICTION_MARKET_ABI,
+    functionName: 'quoteBuy',
+    args: [marketId, outcome === 'Yes' ? 1 : 2, value],
+    query: { enabled: !isMockMode && value > 0n },
+  });
+
+  if (isMockMode) {
+    return { data: value * 2n, isPending: false }; // simplistic 50% mock
+  }
+  return result;
+}
+
+export function useQuoteSell(marketId: bigint, outcome: 'Yes' | 'No', shares: bigint) {
+  const { isMockMode } = useNetwork();
+  
+  const result = useReadContract({
+    address: PREDICTION_MARKET_ADDRESS,
+    abi: PREDICTION_MARKET_ABI,
+    functionName: 'quoteSell',
+    args: [marketId, outcome === 'Yes' ? 1 : 2, shares],
+    query: { enabled: !isMockMode && shares > 0n },
+  });
+
+  if (isMockMode) {
+    return { data: shares / 2n, isPending: false };
+  }
+  return result;
 }
 
 // ─── Write Hooks ───────────────────────────────────────────
 
 export function useBuyShares() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isMockMode } = useNetwork();
+  const { writeContract, data: hash, isPending: wagmiPending, error: wagmiError } = useWriteContract();
+  const { isLoading: wagmiConfirming, isSuccess: wagmiSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const buy = (marketId: bigint, outcome: 'Yes' | 'No', amountEth: string) => {
+  const [mockPending, setMockPending] = useState(false);
+  const [mockSuccess, setMockSuccess] = useState(false);
+
+  const buy = (marketId: bigint, outcome: 'Yes' | 'No', amountEth: string, minSharesOut: bigint) => {
+    if (isMockMode) {
+      setMockPending(true);
+      setMockSuccess(false);
+      setTimeout(() => {
+        setMockPending(false);
+        setMockSuccess(true);
+      }, 800);
+      return;
+    }
+    
     writeContract({
       address: PREDICTION_MARKET_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
       functionName: 'buyShares',
-      args: [marketId, outcome === 'Yes' ? 1 : 2],
+      args: [marketId, outcome === 'Yes' ? 1 : 2, minSharesOut],
       value: parseEther(amountEth),
     });
   };
 
-  return { buy, hash, isPending, isConfirming, isSuccess, error };
+  return { 
+    buy, 
+    hash, 
+    isPending: isMockMode ? mockPending : wagmiPending, 
+    isConfirming: isMockMode ? false : wagmiConfirming, 
+    isSuccess: isMockMode ? mockSuccess : wagmiSuccess, 
+    error: isMockMode ? null : wagmiError 
+  };
 }
 
 export function useSellShares() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const { isMockMode } = useNetwork();
+  const { writeContract, data: hash, isPending: wagmiPending, error: wagmiError } = useWriteContract();
+  const { isLoading: wagmiConfirming, isSuccess: wagmiSuccess } = useWaitForTransactionReceipt({ hash });
 
-  const sell = (marketId: bigint, outcome: 'Yes' | 'No', shares: bigint) => {
+  const [mockPending, setMockPending] = useState(false);
+  const [mockSuccess, setMockSuccess] = useState(false);
+
+  const sell = (marketId: bigint, outcome: 'Yes' | 'No', shares: bigint, minPayout: bigint) => {
+    if (isMockMode) {
+      setMockPending(true);
+      setMockSuccess(false);
+      setTimeout(() => {
+        setMockPending(false);
+        setMockSuccess(true);
+      }, 800);
+      return;
+    }
+
     writeContract({
       address: PREDICTION_MARKET_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
       functionName: 'sellShares',
-      args: [marketId, outcome === 'Yes' ? 1 : 2, shares],
+      args: [marketId, outcome === 'Yes' ? 1 : 2, shares, minPayout],
     });
   };
 
-  return { sell, hash, isPending, isConfirming, isSuccess, error };
+  return { 
+    sell, 
+    hash, 
+    isPending: isMockMode ? mockPending : wagmiPending, 
+    isConfirming: isMockMode ? false : wagmiConfirming, 
+    isSuccess: isMockMode ? mockSuccess : wagmiSuccess, 
+    error: isMockMode ? null : wagmiError 
+  };
 }
 
 // ─── Helpers ───────────────────────────────────────────────

@@ -22,6 +22,7 @@ export interface MarketResponse {
   imageUrl: string;
   endTime: number;
   status: number;
+  resolvedOutcome: number; // 0=None, 1=Yes, 2=No
   yesPrice: number;  // 0-100 (percentage)
   noPrice: number;   // 0-100
   volume: string;    // formatted ETH volume
@@ -38,7 +39,7 @@ export interface TradeEvent {
   timestamp: number;
 }
 
-import { useNetwork } from './contexts/NetworkContext';
+import { useNetwork } from '../contexts/NetworkContext';
 import { MOCK_MARKETS, MOCK_ACTIVITY, MOCK_CANDLES, MOCK_PORTFOLIO } from './mockData';
 
 // ─── API Hook ─────────────────────────────────────────
