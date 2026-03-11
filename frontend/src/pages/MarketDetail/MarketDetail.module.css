@@ -597,3 +597,33 @@
         position: static;
     }
 }
+.orderSuccess {
+    background: #16a34a;
+    cursor: default;
+}
+
+.loginPromptBtn {
+    background: #2563eb;
+}
+
+.loginPromptBtn:hover {
+    filter: brightness(1.1);
+}
+
+.placeOrderBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+}
+
+.yesTitle {
+    color: #4ade80;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+}
+
+.noTitle {
+    color: #f87171;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+}

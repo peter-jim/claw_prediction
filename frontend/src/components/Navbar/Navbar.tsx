@@ -1,11 +1,23 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, ChevronDown, User } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, ChevronDown, User, LogOut, Wallet } from 'lucide-react';
 import LoginModal from '../LoginModal/LoginModal';
+import { useAuth } from '../../context/AuthContext';
 import styles from './Navbar.module.css';
 
 const Navbar = () => {
     const [isLoginOpen, setIsLoginOpen] = useState(false);
+    const [showUserMenu, setShowUserMenu] = useState(false);
+    const { isAuthenticated, user, logout } = useAuth();
+    const navigate = useNavigate();
+
+    const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            const q = (e.target as HTMLInputElement).value.trim();
+            if (q) navigate(`/?q=${encodeURIComponent(q)}`);
+            else navigate('/');
+        }
+    };
 
     return (
         <>
@@ -23,7 +35,7 @@ const Navbar = () => {
                             Markets <ChevronDown size={14} />
                         </Link>
                         <Link to="/portfolio" className={styles.navItem}>Portfolio</Link>
-                        <a href="#" className={styles.navItem}>Activity</a>
+                        <Link to="/activity" className={styles.navItem}>Activity</Link>
                     </div>
                 </div>
 
@@ -34,17 +46,53 @@ const Navbar = () => {
                             type="text"
                             placeholder="Search markets, event, or people"
                             className={styles.searchInput}
+                            onKeyDown={handleSearchKeyDown}
                         />
                     </div>
                 </div>
 
                 <div className={styles.right}>
-                    <button className={styles.loginBtn} onClick={() => setIsLoginOpen(true)}>
-                        Login / Sign Up
-                    </button>
-                    <button className={styles.profileBtn} onClick={() => setIsLoginOpen(true)}>
-                        <User size={18} />
-                    </button>
+                    {isAuthenticated && user ? (
+                        <div className={styles.userSection}>
+                            <div className={styles.balanceBadge}>
+                                <Wallet size={14} />
+                                <span>${user.balance.toFixed(2)}</span>
+                            </div>
+                            <div className={styles.userMenuWrapper}>
+                                <button
+                                    className={styles.profileBtn}
+                                    onClick={() => setShowUserMenu(v => !v)}
+                                >
+                                    <User size={18} />
+                                    <span className={styles.userName}>{user.name}</span>
+                                    <ChevronDown size={14} />
+                                </button>
+                                {showUserMenu && (
+                                    <div className={styles.userMenu} onClick={() => setShowUserMenu(false)}>
+                                        <div className={styles.userMenuEmail}>{user.email}</div>
+                                        <Link to="/portfolio" className={styles.userMenuItem}>
+                                            <Wallet size={16} /> Portfolio
+                                        </Link>
+                                        <button
+                                            className={`${styles.userMenuItem} ${styles.logoutBtn}`}
+                                            onClick={logout}
+                                        >
+                                            <LogOut size={16} /> Log out
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <button className={styles.loginBtn} onClick={() => setIsLoginOpen(true)}>
+                                Login / Sign Up
+                            </button>
+                            <button className={styles.profileBtn} onClick={() => setIsLoginOpen(true)}>
+                                <User size={18} />
+                            </button>
+                        </>
+                    )}
                 </div>
             </nav>
 
@@ -57,3 +105,4 @@ const Navbar = () => {
 };
 
 export default Navbar;
+

@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendingUp, Clock, Info, Activity, List, Settings, ArrowLeft } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { getMarketById } from '../../data/markets';
 import styles from './MarketDetail.module.css';
 
 // Enhanced Mock Data
@@ -18,7 +20,6 @@ const generateChartData = (baseVal: number, points: number) => {
     });
 };
 
-const CHART_DATA_1D = generateChartData(45, 24);
 const ORDER_BOOK = {
     yes: [
         { price: 51.5, shares: 12450 }, { price: 51.0, shares: 8300 },
@@ -32,16 +33,49 @@ const ORDER_BOOK = {
 
 const MarketDetail = () => {
     const navigate = useNavigate();
-    const [timeframe, setTimeframe] = useState('1D');
-    // Using id for fetching in a real app: console.log('Fetching data for market:', id);
-    const [activeTab, setActiveTab] = useState('orderbook');
-    const [orderType, setOrderType] = useState('market');
-    const [outcome, setOutcome] = useState<'Yes' | 'No'>('Yes');
-    const [amount, setAmount] = useState('');
+    const { id } = useParams<{ id: string }>();
+    const [searchParams] = useSearchParams();
+    const { isAuthenticated, user } = useAuth();
 
-    const currentPrice = 52.0;
+    const market = getMarketById(id || '');
+    const initialOutcome = (searchParams.get('outcome') as 'Yes' | 'No') || 'Yes';
+
+    const [timeframe, setTimeframe] = useState('1D');
+    const [activeTab, setActiveTab] = useState('orderbook');
+    const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
+    const [orderType, setOrderType] = useState('market');
+    const [outcome, setOutcome] = useState<'Yes' | 'No'>(initialOutcome);
+    const [amount, setAmount] = useState('');
+    const [orderPlaced, setOrderPlaced] = useState(false);
+
+    const currentPrice = market ? (outcome === 'Yes' ? market.yesPrice : market.noPrice) : 52.0;
+    const chartData = generateChartData(currentPrice, 24);
     const estShares = amount ? (parseFloat(amount) / (currentPrice / 100)).toFixed(2) : '0.00';
     const potReturn = amount ? ((parseFloat(estShares) - parseFloat(amount)) / parseFloat(amount) * 100).toFixed(2) : '0.00';
+
+    const handlePlaceOrder = () => {
+        if (!amount || parseFloat(amount) <= 0) return;
+        if (!user) return;
+        // Simulate order placement
+        setOrderPlaced(true);
+        setTimeout(() => {
+            setOrderPlaced(false);
+            setAmount('');
+        }, 2000);
+    };
+
+    if (!market) {
+        return (
+            <div className={styles.container}>
+                <div className={styles.leftColumn}>
+                    <button className={styles.backBtn} onClick={() => navigate(-1)}>
+                        <ArrowLeft size={20} /> Back to Markets
+                    </button>
+                    <p style={{ color: '#9ca3af', padding: '2rem' }}>Market not found.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={styles.container}>
@@ -54,13 +88,18 @@ const MarketDetail = () => {
                         Back to Markets
                     </button>
                     <div className={styles.titleArea}>
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/46/Bitcoin.svg" alt="Market" className={styles.image} />
+                        <img
+                            src={market.image}
+                            alt="Market"
+                            className={styles.image}
+                            onError={(e) => { e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/600px-No_image_available.svg.png'; }}
+                        />
                         <div>
-                            <h1 className={styles.title}>Will Bitcoin reach $100k by the end of March?</h1>
+                            <h1 className={styles.title}>{market.title}</h1>
                             <div className={styles.badges}>
-                                <span className={styles.badge}><TrendingUp size={14} /> Crypto</span>
-                                <span className={styles.badge}><Clock size={14} /> Ends Mar 31, 2024</span>
-                                <span className={styles.badgeVolume}>$12.5M Vol</span>
+                                <span className={styles.badge}><TrendingUp size={14} /> {market.category}</span>
+                                {market.endDate && <span className={styles.badge}><Clock size={14} /> Ends {market.endDate}</span>}
+                                <span className={styles.badgeVolume}>${market.volume} Vol</span>
                             </div>
                         </div>
                     </div>
@@ -70,7 +109,7 @@ const MarketDetail = () => {
                 <div className={styles.chartContainer}>
                     <div className={styles.chartHeader}>
                         <div className={styles.priceDisplay}>
-                            <span className={styles.priceLabel}>Yes</span>
+                            <span className={styles.priceLabel}>{outcome}</span>
                             <span className={styles.currentPrice}>{currentPrice}¢</span>
                             <span className={styles.priceChange}>+4.2¢ (24h)</span>
                         </div>
@@ -89,7 +128,7 @@ const MarketDetail = () => {
 
                     <div className={styles.chartArea}>
                         <ResponsiveContainer width="100%" height={320}>
-                            <AreaChart data={CHART_DATA_1D} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                            <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -160,15 +199,15 @@ const MarketDetail = () => {
                         {activeTab === 'activity' && (
                             <div className={styles.activityList}>
                                 <div className={styles.activityItem}>
-                                    <div>Bought <strong>450 Yes</strong> at 52¢</div>
+                                    <div>Bought <strong>450 Yes</strong> at {market.yesPrice}¢</div>
                                     <span className={styles.timeAgo}>2 mins ago</span>
                                 </div>
                                 <div className={styles.activityItem}>
-                                    <div>Bought <strong>120 No</strong> at 48¢</div>
+                                    <div>Bought <strong>120 No</strong> at {market.noPrice}¢</div>
                                     <span className={styles.timeAgo}>5 mins ago</span>
                                 </div>
                                 <div className={styles.activityItem}>
-                                    <div>Sold <strong>800 Yes</strong> at 51¢</div>
+                                    <div>Sold <strong>800 Yes</strong> at {market.yesPrice - 1}¢</div>
                                     <span className={styles.timeAgo}>12 mins ago</span>
                                 </div>
                             </div>
@@ -177,8 +216,7 @@ const MarketDetail = () => {
                         {activeTab === 'rules' && (
                             <div className={styles.rulesContent}>
                                 <h3>Resolution Conditions</h3>
-                                <p>This market resolves to "Yes" if the official index price of Bitcoin (BTC) reaches or exceeds $100,000.00 USD according to the highly liquid aggregate index before March 31, 2024, 11:59:59 PM ET.</p>
-                                <p>Otherwise, this market will resolve to "No".</p>
+                                <p>{market.description || 'Resolution conditions not available.'}</p>
                             </div>
                         )}
                     </div>
@@ -190,8 +228,18 @@ const MarketDetail = () => {
                 <div className={styles.tradingPanel}>
                     <div className={styles.tradeHeader}>
                         <div className={styles.buyToggle}>
-                            <button className={`${styles.toggleBtn} ${styles.buyActive}`}>Buy</button>
-                            <button className={styles.toggleBtn}>Sell</button>
+                            <button
+                                className={`${styles.toggleBtn} ${tradeMode === 'buy' ? styles.buyActive : ''}`}
+                                onClick={() => setTradeMode('buy')}
+                            >
+                                Buy
+                            </button>
+                            <button
+                                className={`${styles.toggleBtn} ${tradeMode === 'sell' ? styles.buyActive : ''}`}
+                                onClick={() => setTradeMode('sell')}
+                            >
+                                Sell
+                            </button>
                         </div>
                         <button className={styles.settingsBtn}><Settings size={18} /></button>
                     </div>
@@ -207,14 +255,14 @@ const MarketDetail = () => {
                             onClick={() => setOutcome('Yes')}
                         >
                             <span className={styles.outcomeName}>Yes</span>
-                            <span className={styles.outcomeProb}>52.0¢</span>
+                            <span className={styles.outcomeProb}>{market.yesPrice}¢</span>
                         </button>
                         <button
                             className={`${styles.outcomeSelect} ${outcome === 'No' ? styles.noSelected : ''}`}
                             onClick={() => setOutcome('No')}
                         >
                             <span className={styles.outcomeName}>No</span>
-                            <span className={styles.outcomeProb}>48.0¢</span>
+                            <span className={styles.outcomeProb}>{market.noPrice}¢</span>
                         </button>
                     </div>
 
@@ -222,7 +270,7 @@ const MarketDetail = () => {
                         <div className={styles.inputGroup}>
                             <label>Limit Price (¢)</label>
                             <div className={styles.inputWrapper}>
-                                <input type="number" placeholder="52.0" className={styles.input} />
+                                <input type="number" placeholder={`${currentPrice}`} className={styles.input} />
                             </div>
                         </div>
                     )}
@@ -237,6 +285,7 @@ const MarketDetail = () => {
                                 className={styles.input}
                                 value={amount}
                                 onChange={(e) => setAmount(e.target.value)}
+                                min="0"
                             />
                             <span className={styles.currencySuffix}>USDC</span>
                         </div>
@@ -244,7 +293,13 @@ const MarketDetail = () => {
 
                     <div className={styles.quickAmounts}>
                         {['10', '50', '100', 'Max'].map(val => (
-                            <button key={val} className={styles.quickVal} onClick={() => setAmount(val === 'Max' ? '1250' : val)}>{val}</button>
+                            <button
+                                key={val}
+                                className={styles.quickVal}
+                                onClick={() => setAmount(val === 'Max' ? String(user?.balance?.toFixed(0) ?? '1250') : val)}
+                            >
+                                {val}
+                            </button>
                         ))}
                     </div>
 
@@ -259,11 +314,34 @@ const MarketDetail = () => {
                                 ${amount ? (parseFloat(estShares) - parseFloat(amount)).toFixed(2) : '0.00'} ({amount ? potReturn : '0.00'}%)
                             </span>
                         </div>
+                        {isAuthenticated && user && (
+                            <div className={styles.summaryRow}>
+                                <span>Balance</span>
+                                <span className={styles.highlightVal}>${user.balance.toFixed(2)}</span>
+                            </div>
+                        )}
                     </div>
 
-                    <button className={`${styles.placeOrderBtn} ${outcome === 'Yes' ? styles.yesBtnBrand : styles.noBtnBrand}`}>
-                        Log In to Trade
-                    </button>
+                    {orderPlaced ? (
+                        <button className={`${styles.placeOrderBtn} ${styles.orderSuccess}`} disabled>
+                            ✓ Order Placed!
+                        </button>
+                    ) : isAuthenticated ? (
+                        <button
+                            className={`${styles.placeOrderBtn} ${outcome === 'Yes' ? styles.yesBtnBrand : styles.noBtnBrand}`}
+                            onClick={handlePlaceOrder}
+                            disabled={!amount || parseFloat(amount) <= 0}
+                        >
+                            {tradeMode === 'buy' ? 'Buy' : 'Sell'} {outcome}
+                        </button>
+                    ) : (
+                        <button
+                            className={`${styles.placeOrderBtn} ${styles.loginPromptBtn}`}
+                            onClick={() => navigate('/?login=1')}
+                        >
+                            Log In to Trade
+                        </button>
+                    )}
 
                     <div className={styles.feeNotice}>
                         No trading fees. Powered by Polygon.
@@ -275,3 +353,4 @@ const MarketDetail = () => {
 };
 
 export default MarketDetail;
+

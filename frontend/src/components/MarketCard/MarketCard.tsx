@@ -9,6 +9,8 @@ export interface MarketData {
     image: string;
     yesPrice: number;
     noPrice: number;
+    endDate?: string;
+    description?: string;
 }
 
 interface MarketCardProps {
