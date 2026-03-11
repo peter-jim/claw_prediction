@@ -1,9 +1,3 @@
-node_modules/
-dist/
-dev.db
-dev.db-journal
+node_modules
+dist
 .env
-artifacts/
-cache/
-typechain-types/
-coverage/

@@ -1,9 +1,29 @@
-import { Router, RequestHandler } from 'express';
-import { getMarkets, getMarket, getOrderBook, createMarket } from '../controllers/marketController';
-import { authenticateToken } from '../middleware/auth';
+import { Router } from 'express';
+import { db } from '../db.js';
 
-export const marketRoutes = Router();
-marketRoutes.get('/', getMarkets);
-marketRoutes.get('/:id', getMarket);
-marketRoutes.get('/:id/orderbook', getOrderBook);
-marketRoutes.post('/', authenticateToken, createMarket as RequestHandler);
+const router = Router();
+
+router.get('/', (req, res) => {
+  const { search, category } = req.query;
+  const markets = db.getMarkets({
+    search: search as string | undefined,
+    category: category as string | undefined,
+  });
+  res.json(markets);
+});
+
+router.get('/:id', (req, res) => {
+  const market = db.getMarketById(req.params.id);
+  if (!market) {
+    res.status(404).json({ error: 'Market not found' });
+    return;
+  }
+  res.json(market);
+});
+
+router.get('/:id/activity', (req, res) => {
+  const trades = db.getRecentTrades(req.params.id);
+  res.json(trades);
+});
+
+export default router;

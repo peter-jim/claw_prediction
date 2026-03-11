@@ -176,3 +176,19 @@
 .footer a:hover {
     text-decoration: underline;
 }
+
+.error {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-size: 0.875rem;
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.submitBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
