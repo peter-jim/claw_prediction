@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Mail, Github, Twitter } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/useAuth';
 import styles from './LoginModal.module.css';
 
 interface LoginModalProps {

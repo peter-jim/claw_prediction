@@ -13,7 +13,6 @@ const Home = () => {
     const category = searchParams.get('category') || '';
 
     useEffect(() => {
-        setLoading(true);
         api.markets.list({ search, category })
             .then(data => setMarkets(data))
             .catch(err => console.error('Failed to load markets:', err))

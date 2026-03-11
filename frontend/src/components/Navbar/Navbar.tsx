@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, ChevronDown, User, LogOut } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/useAuth';
 import LoginModal from '../LoginModal/LoginModal';
 import styles from './Navbar.module.css';
 

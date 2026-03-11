@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendingUp, Clock, Info, Activity, List, Settings, ArrowLeft } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/useAuth';
 import { api, type MarketData } from '../../services/api';
 import styles from './MarketDetail.module.css';
 
@@ -57,7 +57,6 @@ const MarketDetail = () => {
         api.markets.get(id)
             .then(data => {
                 setMarket(data);
-                setChartData(generateChartData(data.yesPrice, TIMEFRAME_POINTS[timeframe] || 24));
             })
             .catch(() => navigate('/'))
             .finally(() => setLoading(false));

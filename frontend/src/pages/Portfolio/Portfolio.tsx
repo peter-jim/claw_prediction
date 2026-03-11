@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/useAuth';
 import { api, type PortfolioData } from '../../services/api';
 import styles from './Portfolio.module.css';
 
 const Portfolio = () => {
     const { user } = useAuth();
     const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => !!user);
 
     useEffect(() => {
-        if (!user) {
-            setLoading(false);
-            return;
-        }
+        if (!user) return;
         api.portfolio.get()
             .then(data => setPortfolio(data))
             .catch(err => console.error('Failed to load portfolio:', err))
