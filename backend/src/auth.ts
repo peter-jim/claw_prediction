@@ -1,7 +1,11 @@
 import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction } from 'express';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'claw-prediction-dev-secret';
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'claw-prediction-dev-secret');
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable must be set in production');
+}
 
 export interface AuthRequest extends Request {
   userId?: string;

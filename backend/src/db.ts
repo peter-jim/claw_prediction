@@ -1,15 +1,16 @@
 import { v4 as uuidv4 } from 'uuid';
+import { scryptSync, randomBytes } from 'crypto';
 import type { User, Market, Trade, Position } from './types.js';
 
-// Simple hash for demo purposes (not production-grade)
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return hash.toString(36);
+function hashPassword(password: string, salt?: string): string {
+  const useSalt = salt || randomBytes(16).toString('hex');
+  const hash = scryptSync(password, useSalt, 64).toString('hex');
+  return `${useSalt}:${hash}`;
+}
+
+function verifyPasswordHash(password: string, stored: string): boolean {
+  const [salt] = stored.split(':');
+  return hashPassword(password, salt) === stored;
 }
 
 const users: Map<string, User> = new Map();
@@ -96,7 +97,7 @@ export const db = {
     const user: User = {
       id,
       email,
-      passwordHash: simpleHash(password),
+      passwordHash: hashPassword(password),
       balance: 1250.0,
       createdAt: new Date().toISOString(),
     };
@@ -116,7 +117,7 @@ export const db = {
   },
 
   verifyPassword(user: User, password: string): boolean {
-    return user.passwordHash === simpleHash(password);
+    return verifyPasswordHash(password, user.passwordHash);
   },
 
   // Markets
