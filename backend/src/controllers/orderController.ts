@@ -6,6 +6,8 @@ import { AuthRequest } from '../middleware/auth';
 // Price nudge applied per trade to simulate market impact (simple approximation)
 const PRICE_NUDGE_BUY = 0.01;
 const PRICE_NUDGE_SELL = 0.005;
+// Maximum shares per single order to prevent precision loss
+const MAX_SHARES = 1_000_000;
 
 const placeOrderSchema = z.object({
   marketId: z.string(),
@@ -32,6 +34,10 @@ export async function placeOrder(req: AuthRequest, res: Response) {
       : (data.price ?? (data.outcome === 'YES' ? market.yesPrice : market.noPrice));
 
     const shares = data.amount / price;
+    if (shares > MAX_SHARES) {
+      res.status(400).json({ error: `Order too large: maximum ${MAX_SHARES} shares per order` });
+      return;
+    }
     const cost = data.amount;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -89,7 +95,8 @@ export async function placeOrder(req: AuthRequest, res: Response) {
       if (data.side === 'BUY') {
         if (existingPosition) {
           const totalShares = existingPosition.shares + shares;
-          const newAvgPrice = ((existingPosition.shares * existingPosition.avgPrice) + (shares * price)) / totalShares;
+          // Use cost directly to avoid multiplying large share quantities by price
+          const newAvgPrice = ((existingPosition.shares * existingPosition.avgPrice) + cost) / totalShares;
           await tx.position.update({
             where: { userId_marketId_outcome: { userId, marketId: data.marketId, outcome: data.outcome } },
             data: { shares: totalShares, avgPrice: newAvgPrice, currentPrice: price },
@@ -116,9 +123,13 @@ export async function placeOrder(req: AuthRequest, res: Response) {
       }
 
       const newVolume = market.volume + cost;
-      const newYesPrice = data.outcome === 'YES'
-        ? Math.min(0.99, price + PRICE_NUDGE_BUY)
-        : Math.max(0.01, market.yesPrice - PRICE_NUDGE_SELL);
+      // BUY YES or SELL NO → YES price rises; BUY NO or SELL YES → YES price falls
+      const yesUp = (data.side === 'BUY' && data.outcome === 'YES') ||
+                    (data.side === 'SELL' && data.outcome === 'NO');
+      const nudge = data.side === 'BUY' ? PRICE_NUDGE_BUY : PRICE_NUDGE_SELL;
+      const newYesPrice = yesUp
+        ? Math.min(0.99, market.yesPrice + nudge)
+        : Math.max(0.01, market.yesPrice - nudge);
       const newNoPrice = parseFloat((1 - newYesPrice).toFixed(4));
 
       await tx.market.update({
