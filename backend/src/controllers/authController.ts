@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma/client';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
+import { getJwtSecret } from '../utils/config';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -31,7 +32,7 @@ export async function register(req: Request, res: Response) {
       data: { email: data.email, username: data.username, passwordHash },
       select: { id: true, email: true, username: true, balance: true },
     });
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
     res.status(201).json({ token, user });
   } catch (err: unknown) {
     if (err instanceof z.ZodError) {
@@ -50,7 +51,7 @@ export async function login(req: Request, res: Response) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '7d' });
     res.json({ token, user: { id: user.id, email: user.email, username: user.username, balance: user.balance } });
   } catch (err: unknown) {
     if (err instanceof z.ZodError) {
