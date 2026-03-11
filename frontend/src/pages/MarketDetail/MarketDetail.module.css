@@ -362,6 +362,11 @@
     color: white;
 }
 
+.sellActive {
+    background: #2d2d2d;
+    color: #ef4444;
+}
+
 .settingsBtn {
     background: transparent;
     border: 1px solid #2d2d2d;

@@ -150,11 +150,30 @@
     border-color: var(--border-color-hover);
 }
 
+.balance {
+    color: #10b981;
+    font-weight: 600;
+    font-size: 0.9375rem;
+}
+
+.userEmail {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
 
     .navLinks,
     .center {
+        display: none;
+    }
+
+    .userEmail {
         display: none;
     }
 }
