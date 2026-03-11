@@ -8,12 +8,12 @@ interface SidebarProps {
 
 const CATEGORIES = [
     { id: 'home', path: '/', label: 'Home', icon: Home },
-    { id: 'trending', path: '/', label: 'Trending', icon: TrendingUp },
-    { id: 'crypto', path: '/?category=crypto', label: 'Crypto', icon: DollarSign },
-    { id: 'politics', path: '/?category=politics', label: 'Politics', icon: Globe2 },
-    { id: 'tech', path: '/?category=tech', label: 'Tech', icon: Cpu },
-    { id: 'sports', path: '/?category=sports', label: 'Sports', icon: Trophy },
-    { id: 'pop culture', path: '/?category=pop+culture', label: 'Pop Culture', icon: Film },
+    { id: 'trending', path: '/?sort=volume', label: 'Trending', icon: TrendingUp },
+    { id: 'crypto', path: '/?category=Crypto', label: 'Crypto', icon: DollarSign },
+    { id: 'politics', path: '/?category=Politics', label: 'Politics', icon: Globe2 },
+    { id: 'tech', path: '/?category=Tech', label: 'Tech', icon: Cpu },
+    { id: 'sports', path: '/?category=Sports', label: 'Sports', icon: Trophy },
+    { id: 'pop culture', path: '/?category=Pop Culture', label: 'Pop Culture', icon: Film },
 ];
 
 const Sidebar = ({ className }: SidebarProps) => {

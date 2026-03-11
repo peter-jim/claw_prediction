@@ -154,3 +154,29 @@
         gap: 1.5rem;
     }
 }
+
+.claimBtn {
+    background: #00ff00;
+    color: black;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.claimBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.lossBadge {
+    background: rgba(255, 68, 68, 0.2);
+    color: #ff4444;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    border: 1px solid rgba(255, 68, 68, 0.3);
+}

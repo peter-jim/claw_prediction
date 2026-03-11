@@ -52,8 +52,13 @@ const MarketCard = ({ market, onSelectOutcome }: MarketCardProps) => {
                         onSelectOutcome?.(market.id, 'Yes');
                     }}
                 >
-                    <span className={styles.outcome}>Yes</span>
-                    <span className={styles.price}>{market.yesPrice}¢</span>
+                    <div className={styles.btnTopRow}>
+                        <span className={styles.outcome}>Yes</span>
+                        <span className={styles.price}>{market.yesPrice}¢</span>
+                    </div>
+                    <div className={styles.probBarBackground}>
+                        <div className={styles.probBarFill} style={{ width: `${market.yesPrice}%` }} />
+                    </div>
                 </button>
                 <button
                     className={`${styles.betBtn} ${styles.noBtn}`}
@@ -62,8 +67,13 @@ const MarketCard = ({ market, onSelectOutcome }: MarketCardProps) => {
                         onSelectOutcome?.(market.id, 'No');
                     }}
                 >
-                    <span className={styles.outcome}>No</span>
-                    <span className={styles.price}>{market.noPrice}¢</span>
+                    <div className={styles.btnTopRow}>
+                        <span className={styles.outcome}>No</span>
+                        <span className={styles.price}>{market.noPrice}¢</span>
+                    </div>
+                    <div className={styles.probBarBackground}>
+                        <div className={styles.probBarFill} style={{ width: `${market.noPrice}%` }} />
+                    </div>
                 </button>
             </div>
         </div>

@@ -1,130 +1,110 @@
+/* API service — reads market data from backend (which indexes contract data) */
+/* Trading actions go directly to the contract via wagmi hooks */
+
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
-function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token');
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-  return {};
-}
-
-async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-      ...options.headers,
-    },
-  });
-
+async function fetchJSON<T>(url: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${url}`);
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    const error = await res.json().catch(() => ({ message: 'Request failed' }));
+    throw new Error(error.message || `HTTP ${res.status}`);
   }
-
   return res.json();
 }
 
-export interface AuthResponse {
-  token: string;
-  user: { id: string; email: string; balance: number };
-}
+// ─── Market Types ──────────────────────────────────────────
 
-export interface MarketData {
+export interface MarketResponse {
   id: string;
   title: string;
+  description: string;
   category: string;
-  volume: string;
-  image: string;
-  yesPrice: number;
-  noPrice: number;
-  endDate: string;
-  rules: string;
+  imageUrl: string;
+  endTime: number;
+  status: number;
+  yesPrice: number;  // 0-100 (percentage)
+  noPrice: number;   // 0-100
+  volume: string;    // formatted ETH volume
+  yesPool: string;   // raw wei string
+  noPool: string;
 }
 
-export interface TradeResponse {
-  trade: {
-    id: string;
-    marketId: string;
-    outcome: 'Yes' | 'No';
-    side: 'buy' | 'sell';
-    amount: number;
-    price: number;
-    shares: number;
-    createdAt: string;
+export interface TradeEvent {
+  marketId: string;
+  buyer: string;
+  outcome: string;
+  shares: string;
+  cost: string;
+  timestamp: number;
+}
+
+import { useNetwork } from './contexts/NetworkContext';
+import { MOCK_MARKETS, MOCK_ACTIVITY, MOCK_CANDLES, MOCK_PORTFOLIO } from './mockData';
+
+// ─── API Hook ─────────────────────────────────────────
+
+export const useApi = () => {
+  const { isMockMode } = useNetwork();
+
+  return {
+    markets: {
+      list: async (params?: { search?: string; category?: string; sort?: string }) => {
+        if (isMockMode) {
+          let results = [...MOCK_MARKETS];
+          if (params?.category) {
+            results = results.filter(m => m.category.toLowerCase() === params.category!.toLowerCase());
+          }
+          if (params?.search) {
+            const q = params.search.toLowerCase();
+            results = results.filter(m => m.title.toLowerCase().includes(q) || m.category.toLowerCase().includes(q));
+          }
+          return Promise.resolve(results);
+        }
+
+        const searchParams = new URLSearchParams();
+        if (params?.search) searchParams.set('search', params.search);
+        if (params?.category) searchParams.set('category', params.category);
+        if (params?.sort) searchParams.set('sort', params.sort);
+        const qs = searchParams.toString();
+        return fetchJSON<MarketResponse[]>(`/api/markets${qs ? `?${qs}` : ''}`);
+      },
+      get: async (id: string) => {
+        if (isMockMode) {
+          const market = MOCK_MARKETS.find(m => m.id === id) || MOCK_MARKETS[0];
+          return Promise.resolve(market);
+        }
+        return fetchJSON<MarketResponse>(`/api/markets/${id}`);
+      },
+      activity: async (id: string) => {
+        if (isMockMode) return Promise.resolve(MOCK_ACTIVITY);
+        return fetchJSON<TradeEvent[]>(`/api/markets/${id}/activity`);
+      },
+      candles: async (id: string, timeframe: string) => {
+        if (isMockMode) {
+            const market = MOCK_MARKETS.find(m => m.id === id) || MOCK_MARKETS[0];
+            return Promise.resolve(MOCK_CANDLES(market.yesPrice));
+        }
+        return fetchJSON<Array<{time: string, price: number}>>(`/api/markets/${id}/candles?tf=${timeframe}`);
+      },
+    },
+    portfolio: {
+      get: async (address: string) => {
+        if (isMockMode) {
+            return Promise.resolve({ positions: MOCK_PORTFOLIO } as any);
+        }
+        return fetchJSON<{
+          positions: Array<{
+            marketId: string;
+            title: string;
+            yesShares: string;
+            noShares: string;
+            yesCost: string;
+            noCost: string;
+            currentYesPrice: number;
+            currentNoPrice: number;
+          }>;
+        }>(`/api/portfolio/${address}`);
+      },
+    },
   };
-  balance: number;
-}
-
-export interface PortfolioData {
-  balance: number;
-  portfolioValue: number;
-  totalReturn: number;
-  totalReturnPct: number;
-  positions: {
-    id: string;
-    marketId: string;
-    marketTitle: string;
-    outcome: 'Yes' | 'No';
-    shares: number;
-    avgPrice: number;
-    currentPrice: number;
-    value: number;
-    returnPct: number;
-  }[];
-}
-
-export const api = {
-  auth: {
-    login(email: string, password: string) {
-      return request<AuthResponse>('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-    },
-    register(email: string, password: string) {
-      return request<AuthResponse>('/api/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-    },
-    me() {
-      return request<{ id: string; email: string; balance: number }>('/api/auth/me');
-    },
-  },
-  markets: {
-    list(params?: { search?: string; category?: string }) {
-      const qs = new URLSearchParams();
-      if (params?.search) qs.set('search', params.search);
-      if (params?.category) qs.set('category', params.category);
-      const queryStr = qs.toString();
-      return request<MarketData[]>(`/api/markets${queryStr ? `?${queryStr}` : ''}`);
-    },
-    get(id: string) {
-      return request<MarketData>(`/api/markets/${id}`);
-    },
-    activity(id: string) {
-      return request<TradeResponse['trade'][]>(`/api/markets/${id}/activity`);
-    },
-  },
-  trades: {
-    place(data: {
-      marketId: string;
-      outcome: 'Yes' | 'No';
-      side: 'buy' | 'sell';
-      orderType: 'market' | 'limit';
-      amount: number;
-    }) {
-      return request<TradeResponse>('/api/trades', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    },
-  },
-  portfolio: {
-    get() {
-      return request<PortfolioData>('/api/portfolio');
-    },
-  },
 };
