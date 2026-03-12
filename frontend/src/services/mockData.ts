@@ -9,12 +9,14 @@ export const MOCK_MARKETS: MarketResponse[] = [
         imageUrl: "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
         endTime: new Date("2024-12-31T23:59:00Z").getTime() / 1000,
         status: 0,
+        resolvedOutcome: 0,
         yesPrice: 58,
         noPrice: 42,
         volume: "1,245.5 ETH",
         yesPool: "150000000000000000000", // 150 ETH
         noPool: "108000000000000000000", // 108 ETH
     },
+
     {
         id: "m_002",
         title: "Will SpaceX land humans on Mars before 2030?",
@@ -23,12 +25,14 @@ export const MOCK_MARKETS: MarketResponse[] = [
         imageUrl: "https://upload.wikimedia.org/wikipedia/commons/e/ee/SpaceX-Logo.svg",
         endTime: new Date("2029-12-31T23:59:00Z").getTime() / 1000,
         status: 0,
+        resolvedOutcome: 0,
         yesPrice: 35,
         noPrice: 65,
         volume: "850.2 ETH",
         yesPool: "105000000000000000000",
         noPool: "195000000000000000000",
     },
+
     {
         id: "m_003",
         title: "Will Artificial General Intelligence (AGI) be achieved by 2027?",
@@ -37,12 +41,14 @@ export const MOCK_MARKETS: MarketResponse[] = [
         imageUrl: "https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg",
         endTime: new Date("2026-12-31T23:59:00Z").getTime() / 1000,
         status: 0,
+        resolvedOutcome: 0,
         yesPrice: 82,
         noPrice: 18,
         volume: "3,100.0 ETH",
         yesPool: "820000000000000000000",
         noPool: "180000000000000000000",
     },
+
     {
         id: "m_004",
         title: "2024 US Presidential Election Winner",
@@ -51,12 +57,14 @@ export const MOCK_MARKETS: MarketResponse[] = [
         imageUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/US_Capitol_Building.jpg/800px-US_Capitol_Building.jpg",
         endTime: new Date("2024-11-05T23:59:00Z").getTime() / 1000,
         status: 1, // Resolved
+        resolvedOutcome: 1, // Yes wins
         yesPrice: 100,
         noPrice: 0,
         volume: "12,500.0 ETH",
         yesPool: "1200000000000000000000",
         noPool: "100000000000000000000",
     }
+
 ];
 
 export const MOCK_CANDLES = (basePrice: number) => {

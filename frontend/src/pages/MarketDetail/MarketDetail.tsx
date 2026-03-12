@@ -95,7 +95,7 @@ const MarketDetail = () => {
 
     if (side === 'buy' && quoteBuyData) {
         // quoteBuyData is expected shares out (gross).
-        const sharesOut = Number(ethers.formatEther(quoteBuyData));
+        const sharesOut = Number(ethers.formatEther(quoteBuyData as bigint));
         estOutputDisplay = sharesOut.toFixed(2);
         
         // Slippage deduction
@@ -104,7 +104,7 @@ const MarketDetail = () => {
         minOutputRaw = ethers.parseEther(minSharesNum.toFixed(18));
     } else if (side === 'sell' && quoteSellData) {
         // quoteSellData is expected ETH out (gross). Fee is 0.2% (20 bps).
-        const grossEth = Number(ethers.formatEther(quoteSellData));
+        const grossEth = Number(ethers.formatEther(quoteSellData as bigint));
         const netEth = grossEth * (1 - 0.002);
         estOutputDisplay = netEth.toFixed(4);
 
@@ -112,6 +112,7 @@ const MarketDetail = () => {
         const minPayoutNum = netEth * slippageMultiplier;
         minOutputRaw = ethers.parseEther(minPayoutNum.toFixed(18));
     }
+
 
     const priceChange = chartData.length >= 2
         ? chartData[chartData.length - 1].price - chartData[0].price
@@ -179,10 +180,15 @@ const MarketDetail = () => {
     
     let hasWinningShares = false;
     if (isResolved && posData) {
-        const [yesShares, noShares] = posData as [bigint, bigint, bigint, bigint];
-        if (resolvedOutcome === 1 && yesShares > 0n) hasWinningShares = true;
-        if (resolvedOutcome === 2 && noShares > 0n) hasWinningShares = true;
+        // Viem might return named tuples as objects or arrays
+        const pos: any = posData;
+        const yesShares = pos.yesShares !== undefined ? pos.yesShares : pos[0];
+        const noShares = pos.noShares !== undefined ? pos.noShares : pos[1];
+        
+        if (resolvedOutcome === 1 && (yesShares as bigint) > 0n) hasWinningShares = true;
+        if (resolvedOutcome === 2 && (noShares as bigint) > 0n) hasWinningShares = true;
     }
+
 
     return (
         <div className={styles.container}>
@@ -377,9 +383,12 @@ const MarketDetail = () => {
                                     <label className={styles.amountLabel}>Amount</label>
                                     {side === 'sell' && posData && (
                                         <span className={styles.balanceLabel}>
-                                            Max: {ethers.formatEther(outcome === 'Yes' ? posData[0] : posData[1])}
+                                            Max: {ethers.formatEther(outcome === 'Yes' 
+                                                ? ((posData as any).yesShares ?? (posData as any)[0]) 
+                                                : ((posData as any).noShares ?? (posData as any)[1]))}
                                         </span>
                                     )}
+
                                 </div>
                                 <div className={styles.amountInput}>
                                     {side === 'buy' && <span className={styles.currencySymbol}>Ξ</span>}
@@ -405,11 +414,13 @@ const MarketDetail = () => {
                                         ['10', '50', '100', 'Max'].map(v => (
                                             <button key={v} className={styles.quickBtn} onClick={() => {
                                                 if (v === 'Max' && posData) {
-                                                    setAmount(ethers.formatEther(outcome === 'Yes' ? posData[0] : posData[1]));
+                                                    const shares = outcome === 'Yes' ? ((posData as any).yesShares ?? (posData as any)[0]) : ((posData as any).noShares ?? (posData as any)[1]);
+                                                    setAmount(ethers.formatEther(shares));
                                                 } else {
                                                     setAmount(v);
                                                 }
                                             }}>
+
                                                 {v}
                                             </button>
                                         ))
