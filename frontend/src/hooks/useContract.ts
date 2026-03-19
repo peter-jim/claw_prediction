@@ -119,7 +119,7 @@ export function useBuyShares() {
       address: PREDICTION_MARKET_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
       functionName: 'buyShares',
-      args: [marketId, outcome === 'Yes' ? 1 : 2, minSharesOut],
+      args: [marketId, outcome === 'Yes' ? 1 : 2, minSharesOut, BigInt(Math.floor(Date.now() / 1000) + 600)],
       value: parseEther(amountEth),
     });
   };
@@ -157,7 +157,7 @@ export function useSellShares() {
       address: PREDICTION_MARKET_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
       functionName: 'sellShares',
-      args: [marketId, outcome === 'Yes' ? 1 : 2, shares, minPayout],
+      args: [marketId, outcome === 'Yes' ? 1 : 2, shares, minPayout, BigInt(Math.floor(Date.now() / 1000) + 600)],
     });
   };
 
@@ -169,6 +169,50 @@ export function useSellShares() {
     isSuccess: isMockMode ? mockSuccess : wagmiSuccess, 
     error: isMockMode ? null : wagmiError 
   };
+}
+
+// ─── LP Hooks ──────────────────────────────────────────────
+
+export function usePoolReserves(marketId: bigint) {
+  return useReadContract({
+    address: PREDICTION_MARKET_ADDRESS,
+    abi: PREDICTION_MARKET_ABI,
+    functionName: 'getPoolReserves',
+    args: [marketId],
+  });
+}
+
+export function useAddLiquidity() {
+  const { writeContract, data: hash, isPending, error: wagmiError } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const addLiquidity = (marketId: bigint, amountEth: string) => {
+    writeContract({
+      address: PREDICTION_MARKET_ADDRESS,
+      abi: PREDICTION_MARKET_ABI,
+      functionName: 'addLiquidity',
+      args: [marketId, BigInt(Math.floor(Date.now() / 1000) + 600)],
+      value: parseEther(amountEth),
+    });
+  };
+
+  return { addLiquidity, isPending, isConfirming, isSuccess, error: wagmiError };
+}
+
+export function useRemoveLiquidity() {
+  const { writeContract, data: hash, isPending, error: wagmiError } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const removeLiquidity = (marketId: bigint, lpShares: bigint) => {
+    writeContract({
+      address: PREDICTION_MARKET_ADDRESS,
+      abi: PREDICTION_MARKET_ABI,
+      functionName: 'removeLiquidity',
+      args: [marketId, lpShares, BigInt(Math.floor(Date.now() / 1000) + 600)],
+    });
+  };
+
+  return { removeLiquidity, isPending, isConfirming, isSuccess, error: wagmiError };
 }
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -198,3 +242,4 @@ export function formatVolume(yesPool: bigint | undefined, noPool: bigint | undef
   if (total >= 1000) return `${(total / 1000).toFixed(1)}k ETH`;
   return `${total.toFixed(2)} ETH`;
 }
+

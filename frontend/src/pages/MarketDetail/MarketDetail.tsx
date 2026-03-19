@@ -8,6 +8,7 @@ import { ethers } from 'ethers';
 import { useApi, type MarketResponse } from '../../services/api';
 import { useBuyShares, useSellShares, usePosition, useQuoteBuy, useQuoteSell } from '../../hooks/useContract';
 import { PREDICTION_MARKET_ADDRESS, PREDICTION_MARKET_ABI } from '../../config/contract';
+import MarketImage from '../../components/MarketImage/MarketImage';
 import styles from './MarketDetail.module.css';
 
 const MarketDetail = () => {
@@ -15,6 +16,17 @@ const MarketDetail = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { address, isConnected } = useAccount();
+    
+    // Convert route param to BigInt for contract calls
+    // Mock IDs like "m_001" need numeric extraction; on-chain IDs are pure numbers
+    const marketIdBigInt = (() => {
+        try {
+            const numericStr = (id || '0').replace(/\D/g, '');
+            return BigInt(numericStr || '0');
+        } catch {
+            return 0n;
+        }
+    })();
 
     const [market, setMarket] = useState<MarketResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -30,11 +42,11 @@ const MarketDetail = () => {
 
     const { buy, isPending: isBuyPending, isConfirming: isBuyConfirming, isSuccess: isBuySuccess, error: buyError } = useBuyShares();
     const { sell, isPending: isSellPending, isConfirming: isSellConfirming, isSuccess: isSellSuccess, error: sellError } = useSellShares();
-    const { data: posData } = usePosition(id ? BigInt(id) : BigInt(0), address);
+    const { data: posData } = usePosition(marketIdBigInt, address);
 
     const amountWei = amount && !isNaN(Number(amount)) ? ethers.parseEther(amount) : 0n;
-    const { data: quoteBuyData } = useQuoteBuy(id ? BigInt(id) : 0n, outcome, side === 'buy' ? amount : '');
-    const { data: quoteSellData } = useQuoteSell(id ? BigInt(id) : 0n, outcome, side === 'sell' ? amountWei : 0n);
+    const { data: quoteBuyData } = useQuoteBuy(marketIdBigInt, outcome, side === 'buy' ? amount : '');
+    const { data: quoteSellData } = useQuoteSell(marketIdBigInt, outcome, side === 'sell' ? amountWei : 0n);
 
     const { writeContract: writeClaim, data: claimHash, isPending: isClaiming } = useWriteContract();
     const { isSuccess: isClaimSuccess } = useWaitForTransactionReceipt({ hash: claimHash });
@@ -126,9 +138,9 @@ const MarketDetail = () => {
 
         setTradeMessage('');
         if (side === 'buy') {
-            buy(BigInt(market.id), outcome, amount, minOutputRaw);
+            buy(marketIdBigInt, outcome, amount, minOutputRaw);
         } else {
-            sell(BigInt(market.id), outcome, amountWei, minOutputRaw);
+            sell(marketIdBigInt, outcome, amountWei, minOutputRaw);
         }
     }, [amount, market, isConnected, outcome, side, buy, sell, minOutputRaw, amountWei]);
 
@@ -138,7 +150,7 @@ const MarketDetail = () => {
             address: PREDICTION_MARKET_ADDRESS,
             abi: PREDICTION_MARKET_ABI,
             functionName: 'claimWinnings',
-            args: [BigInt(id)],
+            args: [marketIdBigInt],
         });
     };
 
@@ -200,7 +212,7 @@ const MarketDetail = () => {
                         Back to Markets
                     </button>
                     <div className={styles.titleArea}>
-                        <img src={market.imageUrl} alt="Market" className={styles.image} />
+                        <MarketImage src={market.imageUrl} alt={market.title} category={market.category} size={72} />
                         <div>
                             <h1 className={styles.title}>
                                 {market.title}
@@ -342,7 +354,7 @@ const MarketDetail = () => {
             </div>
 
             <div className={styles.rightColumn}>
-                <div className={styles.tradePanel}>
+                <div className={styles.tradingPanel}>
                     {isResolved ? (
                         <div className={styles.resolvedOverlay}>
                             <h3>Market is resolved</h3>
@@ -350,48 +362,49 @@ const MarketDetail = () => {
                         </div>
                     ) : (
                         <>
-                            <div className={styles.sideToggle}>
-                                <button
-                                    className={`${styles.sideBtn} ${side === 'buy' ? styles.sideBtnActive : ''}`}
-                                    onClick={() => setSide('buy')}
-                                >Buy</button>
-                                <button
-                                    className={`${styles.sideBtn} ${side === 'sell' ? styles.sideBtnActive : ''}`}
-                                    onClick={() => setSide('sell')}
-                                >Sell</button>
+                            <div className={styles.tradeHeader}>
+                                <div className={styles.buyToggle}>
+                                    <button
+                                        className={`${styles.toggleBtn} ${side === 'buy' ? styles.buyActive : ''}`}
+                                        onClick={() => setSide('buy')}
+                                    >Buy</button>
+                                    <button
+                                        className={`${styles.toggleBtn} ${side === 'sell' ? styles.sellActive : ''}`}
+                                        onClick={() => setSide('sell')}
+                                    >Sell</button>
+                                </div>
                             </div>
 
-                            <div className={styles.outcomeSelector}>
+                            <div className={styles.outcomeGrid}>
                                 <button
-                                    className={`${styles.outcomeBtn} ${outcome === 'Yes' ? styles.outcomeBtnYes : ''}`}
+                                    className={`${styles.outcomeSelect} ${outcome === 'Yes' ? styles.yesSelected : ''}`}
                                     onClick={() => setOutcome('Yes')}
                                 >
-                                    <span className={styles.outcomeLabel}>Yes</span>
-                                    <span className={styles.outcomePrice}>{market.yesPrice}¢</span>
+                                    <span className={styles.outcomeName}>Yes</span>
+                                    <span className={styles.outcomeProb}>{market.yesPrice}¢</span>
                                 </button>
                                 <button
-                                    className={`${styles.outcomeBtn} ${outcome === 'No' ? styles.outcomeBtnNo : ''}`}
+                                    className={`${styles.outcomeSelect} ${outcome === 'No' ? styles.noSelected : ''}`}
                                     onClick={() => setOutcome('No')}
                                 >
-                                    <span className={styles.outcomeLabel}>No</span>
-                                    <span className={styles.outcomePrice}>{market.noPrice}¢</span>
+                                    <span className={styles.outcomeName}>No</span>
+                                    <span className={styles.outcomeProb}>{market.noPrice}¢</span>
                                 </button>
                             </div>
 
-                            <div className={styles.amountSection}>
-                                <div className={styles.amountLabelRow}>
-                                    <label className={styles.amountLabel}>Amount</label>
+                            <div className={styles.inputGroup}>
+                                <label>
+                                    Amount
                                     {side === 'sell' && posData && (
-                                        <span className={styles.balanceLabel}>
+                                        <span style={{ float: 'right', fontWeight: 400 }}>
                                             Max: {ethers.formatEther(outcome === 'Yes' 
                                                 ? ((posData as any).yesShares ?? (posData as any)[0]) 
                                                 : ((posData as any).noShares ?? (posData as any)[1]))}
                                         </span>
                                     )}
-
-                                </div>
-                                <div className={styles.amountInput}>
-                                    {side === 'buy' && <span className={styles.currencySymbol}>Ξ</span>}
+                                </label>
+                                <div className={`${styles.inputWrapper} ${styles.inputFocus}`}>
+                                    {side === 'buy' && <span className={styles.currencyPrefix}>Ξ</span>}
                                     <input
                                         type="number"
                                         placeholder="0"
@@ -401,18 +414,18 @@ const MarketDetail = () => {
                                         step="0.01"
                                         min="0"
                                     />
-                                    <span className={styles.currencyLabel}>{side === 'buy' ? 'ETH' : 'Shares'}</span>
+                                    <span className={styles.currencySuffix}>{side === 'buy' ? 'ETH' : 'Shares'}</span>
                                 </div>
                                 <div className={styles.quickAmounts}>
                                     {side === 'buy' ? (
                                         ['0.01', '0.05', '0.1', '0.5'].map(v => (
-                                            <button key={v} className={styles.quickBtn} onClick={() => setAmount(v)}>
+                                            <button key={v} className={styles.quickVal} onClick={() => setAmount(v)}>
                                                 {v} ETH
                                             </button>
                                         ))
                                     ) : (
                                         ['10', '50', '100', 'Max'].map(v => (
-                                            <button key={v} className={styles.quickBtn} onClick={() => {
+                                            <button key={v} className={styles.quickVal} onClick={() => {
                                                 if (v === 'Max' && posData) {
                                                     const shares = outcome === 'Yes' ? ((posData as any).yesShares ?? (posData as any)[0]) : ((posData as any).noShares ?? (posData as any)[1]);
                                                     setAmount(ethers.formatEther(shares));
@@ -420,7 +433,6 @@ const MarketDetail = () => {
                                                     setAmount(v);
                                                 }
                                             }}>
-
                                                 {v}
                                             </button>
                                         ))
@@ -428,17 +440,18 @@ const MarketDetail = () => {
                                 </div>
                             </div>
 
-                            <div className={styles.tradeInfo}>
-                                <div className={styles.infoRow}>
+                            <div className={styles.summaryArea}>
+                                <div className={styles.summaryRow}>
                                     <span>{side === 'buy' ? 'Est. Shares Received' : 'Est. ETH Payout (Net)'}</span>
-                                    <span className={styles.infoValue}>{estOutputDisplay} {side === 'buy' ? '' : 'ETH'}</span>
+                                    <span className={styles.highlightVal}>{estOutputDisplay} {side === 'buy' ? '' : 'ETH'}</span>
                                 </div>
-                                <div className={styles.infoRow}>
+                                <div className={styles.summaryRow}>
                                     <span>Slippage Tolerance</span>
                                     <select 
                                         className={styles.slippageSelect} 
                                         value={slippage} 
                                         onChange={(e) => setSlippage(e.target.value)}
+                                        style={{ background: 'transparent', border: 'none', color: 'white', fontWeight: 600, textAlign: 'right', cursor: 'pointer' }}
                                     >
                                         <option value="0.1">0.1%</option>
                                         <option value="0.5">0.5%</option>
@@ -450,7 +463,7 @@ const MarketDetail = () => {
 
                             {isConnected ? (
                                 <button
-                                    className={`${styles.tradeBtn} ${side === 'buy' ? styles.tradeBtnBuy : styles.tradeBtnSell}`}
+                                    className={`${styles.placeOrderBtn} ${outcome === 'Yes' ? styles.yesBtnBrand : styles.noBtnBrand}`}
                                     onClick={handleTrade}
                                     disabled={!amount || isPending || isConfirming}
                                 >
@@ -459,10 +472,12 @@ const MarketDetail = () => {
                                      `${side === 'buy' ? 'Buy' : 'Sell'} ${outcome}`}
                                 </button>
                             ) : (
-                                <div className={styles.connectWrapper}>
+                                <div style={{ display: 'flex', justifyContent: 'center' }}>
                                     <ConnectButton />
                                 </div>
                             )}
+
+                            <p className={styles.feeNotice}>Trading fee: 0.2%</p>
 
                             {tradeMessage && (
                                 <p className={`${styles.tradeMessage} ${isBuySuccess ? styles.tradeSuccess : styles.tradeError}`}>

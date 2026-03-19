@@ -5,14 +5,23 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title PredictionMarket
  * @notice A prediction market contract where users can buy/sell shares on Yes/No outcomes
  * @dev Uses ETH as the trading currency. Each market has a Yes and No outcome pool.
  *      V2: Implements Constant Product AMM (x * y = k) and Upgradability (UUPS).
+ *      V3: Added ReentrancyGuard, cancelMarket, endTime enforcement, loser position cleanup.
+ *      V4: Bugfix – upgradeable ReentrancyGuard, pool accounting, refund logic, pause consistency.
  */
-contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradeable, UUPSUpgradeable {
+contract PredictionMarket is
+    Initializable,
+    PausableUpgradeable,
+    OwnableUpgradeable,
+    UUPSUpgradeable,
+    ReentrancyGuard
+{
     enum Outcome { None, Yes, No }
     enum MarketStatus { Open, Resolved, Cancelled }
 
@@ -30,6 +39,7 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         uint256 yesPool;      // ETH in Yes pool
         uint256 noPool;       // ETH in No pool
         uint256 totalLpShares; // Total LP shares minted
+        uint256 totalCostBasis; // Sum of all users' cost basis, for proportional refund
         address creator;
         uint256 createdAt;
     }
@@ -84,7 +94,17 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         Outcome outcome
     );
 
+    event MarketCancelled(
+        uint256 indexed marketId
+    );
+
     event WinningsClaimed(
+        uint256 indexed marketId,
+        address indexed user,
+        uint256 amount
+    );
+
+    event RefundClaimed(
         uint256 indexed marketId,
         address indexed user,
         uint256 amount
@@ -125,6 +145,11 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         _;
     }
 
+    modifier marketNotExpired(uint256 _marketId) {
+        require(block.timestamp < markets[_marketId].endTime, "Market has expired");
+        _;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -133,7 +158,6 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
     function initialize(address _initialOwner, address _oracle, address _treasury) initializer public {
         __Pausable_init();
         __Ownable_init(_initialOwner);
-
         oracle = _oracle;
         treasury = _treasury;
         feeBasisPoints = 20;  // 0.2% default
@@ -146,7 +170,10 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         override
     {}
 
+    // ─── Admin Functions ──────────────────────────────────────
+
     function setOracle(address _oracle) external onlyOwner {
+        require(_oracle != address(0), "Invalid address");
         oracle = _oracle;
     }
 
@@ -162,7 +189,7 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         treasury = _treasury;
     }
 
-    function claimTreasury() external {
+    function claimTreasury() external onlyOwner nonReentrant {
         uint256 amount = treasuryBalance;
         require(amount > 0, "No funds");
         treasuryBalance = 0;
@@ -178,8 +205,10 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         _unpause();
     }
 
+    // ─── Market Lifecycle ─────────────────────────────────────
+
     /**
-     * @notice Create a new prediction market
+     * @notice Create a new prediction market (owner or oracle only)
      */
     function createMarket(
         string calldata _title,
@@ -187,7 +216,7 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         string calldata _category,
         string calldata _imageUrl,
         uint256 _endTime
-    ) external whenNotPaused returns (uint256) {
+    ) external onlyOracleOrOwner whenNotPaused returns (uint256) {
         require(_endTime > block.timestamp, "End time must be in the future");
 
         uint256 marketId = nextMarketId++;
@@ -208,6 +237,41 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
     }
 
     /**
+     * @notice Cancel a market — users can then claim refunds
+     */
+    function cancelMarket(uint256 _marketId)
+        external
+        onlyOracleOrOwner
+        marketExists(_marketId)
+        marketOpen(_marketId)
+    {
+        Market storage m = markets[_marketId];
+        m.status = MarketStatus.Cancelled;
+
+        emit MarketCancelled(_marketId);
+    }
+
+    /**
+     * @notice Oracle or Owner resolves a market with the winning outcome
+     */
+    function resolveMarket(uint256 _marketId, Outcome _outcome)
+        external
+        onlyOracleOrOwner
+        marketExists(_marketId)
+        marketOpen(_marketId)
+    {
+        require(_outcome == Outcome.Yes || _outcome == Outcome.No, "Invalid outcome");
+
+        Market storage m = markets[_marketId];
+        m.status = MarketStatus.Resolved;
+        m.resolvedOutcome = _outcome;
+
+        emit MarketResolved(_marketId, _outcome);
+    }
+
+    // ─── Trading ──────────────────────────────────────────────
+
+    /**
      * @notice Buy shares of a market outcome
      * @dev CPAMM: Exact Input approach. msg.value mints equal Yes and No shares.
      *      Unwanted shares are immediately sold back to the respective pool, shifting the ratio.
@@ -220,14 +284,18 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
     )
         external
         payable
+        nonReentrant
+        whenNotPaused
         marketExists(_marketId)
         marketOpen(_marketId)
+        marketNotExpired(_marketId)
         checkDeadline(_deadline)
     {
         require(_outcome == Outcome.Yes || _outcome == Outcome.No, "Invalid outcome");
         require(msg.value > 0, "Must send ETH");
 
         Market storage m = markets[_marketId];
+        require(m.yesShares > 0 && m.noShares > 0, "Add liquidity first");
         Position storage pos = positions[_marketId][msg.sender];
 
         // 1. Calculate and deduct fees
@@ -249,34 +317,27 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         uint256 sharesObtained;
 
         if (_outcome == Outcome.Yes) {
-            // User wants YES. We virtually sell the minted NO shares to the NO pool for ETH,
-            // then use that ETH to buy MORE YES shares from the YES pool.
-            // Simplified AMM math for buying:
-            // Pool balances effectively absorb the netValue during the swap mathematics
-
             sharesObtained = _quoteBuyExactIn(m.yesShares, m.noShares, netValue);
             require(sharesObtained >= _minSharesOut, "Slippage exceeded");
 
-            m.yesShares -= (sharesObtained - netValue); // pool loses the extra YES shares
-            m.noShares += netValue;                     // pool gains the unwanted NO shares
-            
-            // Pools absorb the ETH
+            m.yesShares -= (sharesObtained - netValue);
+            m.noShares += netValue;
             m.yesPool += netValue; 
 
             pos.yesShares += sharesObtained;
             pos.yesCost += msg.value;
+            m.totalCostBasis += msg.value;
         } else {
-            // User wants NO.
             sharesObtained = _quoteBuyExactIn(m.noShares, m.yesShares, netValue);
             require(sharesObtained >= _minSharesOut, "Slippage exceeded");
 
             m.noShares -= (sharesObtained - netValue);
             m.yesShares += netValue;
-            
             m.noPool += netValue;
 
             pos.noShares += sharesObtained;
             pos.noCost += msg.value;
+            m.totalCostBasis += msg.value;
         }
 
         emit SharesBought(_marketId, msg.sender, _outcome, sharesObtained, msg.value);
@@ -293,8 +354,10 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         uint256 _deadline
     )
         external
+        nonReentrant
         marketExists(_marketId)
         marketOpen(_marketId)
+        marketNotExpired(_marketId)
         whenNotPaused
         checkDeadline(_deadline)
     {
@@ -305,32 +368,42 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         Position storage pos = positions[_marketId][msg.sender];
 
         uint256 grossPayout;
+        uint256 costReduction;
         if (_outcome == Outcome.Yes) {
             require(pos.yesShares >= _shares, "Not enough Yes shares");
             grossPayout = _quoteSellExactIn(m.yesShares, m.noShares, _shares);
             
             m.yesShares += _shares;
-            m.noShares -= grossPayout; // Pool pays out by giving the user's NO shares back + ETH
-            m.yesPool -= grossPayout;
+            require(grossPayout <= m.noShares, "Insufficient no shares in pool");
+            require(grossPayout <= m.noPool, "Insufficient no pool balance");
+            m.noShares -= grossPayout;
+            m.noPool -= grossPayout;  // ETH flows out of No pool
 
             pos.yesShares -= _shares;
-            uint256 costReduction = (_shares * pos.yesCost) / (pos.yesShares + _shares);
+            costReduction = (_shares * pos.yesCost) / (pos.yesShares + _shares);
             pos.yesCost -= costReduction;
         } else {
             require(pos.noShares >= _shares, "Not enough No shares");
             grossPayout = _quoteSellExactIn(m.noShares, m.yesShares, _shares);
             
             m.noShares += _shares;
+            require(grossPayout <= m.yesShares, "Insufficient yes shares in pool");
+            require(grossPayout <= m.yesPool, "Insufficient yes pool balance");
             m.yesShares -= grossPayout;
-            m.noPool -= grossPayout;
+            m.yesPool -= grossPayout;  // ETH flows out of Yes pool
 
             pos.noShares -= _shares;
-            uint256 costReduction = (_shares * pos.noCost) / (pos.noShares + _shares);
+            costReduction = (_shares * pos.noCost) / (pos.noShares + _shares);
             pos.noCost -= costReduction;
         }
+
+        // Track cost basis reduction
+        m.totalCostBasis -= costReduction;
         
+        // Fee calculation
         uint256 totalFee = (grossPayout * feeBasisPoints) / 10000;
         uint256 treasuryFee = (grossPayout * treasuryFeeBps) / 10000;
+        uint256 lpFee = totalFee - treasuryFee;
         
         uint256 netPayout = grossPayout - totalFee;
 
@@ -338,7 +411,11 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
 
         treasuryBalance += treasuryFee;
 
-        // LP fee stays distributed in pools implicitly since we didn't drain it from the pool
+        // Distribute LP fee back to pools
+        uint256 yesLpFee = lpFee / 2;
+        uint256 noLpFee = lpFee - yesLpFee;
+        m.yesPool += yesLpFee;
+        m.noPool += noLpFee;
 
         (bool success, ) = payable(msg.sender).call{value: netPayout}("");
         require(success, "ETH transfer failed");
@@ -346,29 +423,15 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         emit SharesSold(_marketId, msg.sender, _outcome, _shares, netPayout);
     }
 
-    /**
-     * @notice Oracle or Owner resolves a market with the winning outcome
-     */
-    function resolveMarket(uint256 _marketId, Outcome _outcome)
-        external
-        onlyOracleOrOwner
-        marketExists(_marketId)
-        marketOpen(_marketId)
-    {
-        require(_outcome == Outcome.Yes || _outcome == Outcome.No, "Invalid outcome");
-
-        Market storage m = markets[_marketId];
-        m.status = MarketStatus.Resolved;
-        m.resolvedOutcome = _outcome;
-
-        emit MarketResolved(_marketId, _outcome);
-    }
+    // ─── Claims ───────────────────────────────────────────────
 
     /**
      * @notice Claim winnings from a resolved market
+     * @dev Also clears the losing side's shares to prevent them from staying on-chain forever
      */
     function claimWinnings(uint256 _marketId)
         external
+        nonReentrant
         marketExists(_marketId)
     {
         Market storage m = markets[_marketId];
@@ -380,15 +443,28 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
 
         if (m.resolvedOutcome == Outcome.Yes) {
             require(pos.yesShares > 0, "No winning shares");
-            // Winner gets proportional share of total pool
             payout = (pos.yesShares * totalPool) / m.yesShares;
             pos.yesShares = 0;
             pos.yesCost = 0;
+            // Clear the losing side too
+            pos.noShares = 0;
+            pos.noCost = 0;
         } else {
             require(pos.noShares > 0, "No winning shares");
             payout = (pos.noShares * totalPool) / m.noShares;
             pos.noShares = 0;
             pos.noCost = 0;
+            // Clear the losing side too
+            pos.yesShares = 0;
+            pos.yesCost = 0;
+        }
+
+        // Deduct payout from pools proportionally
+        if (totalPool > 0) {
+            uint256 yesDeduct = (payout * m.yesPool) / totalPool;
+            uint256 noDeduct = payout - yesDeduct;
+            m.yesPool -= yesDeduct;
+            m.noPool -= noDeduct;
         }
 
         (bool success, ) = payable(msg.sender).call{value: payout}("");
@@ -397,11 +473,63 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
         emit WinningsClaimed(_marketId, msg.sender, payout);
     }
 
+    /**
+     * @notice Claim a proportional refund from a cancelled market
+     * @dev Users get back ETH proportional to their total cost basis
+     */
+    function claimRefund(uint256 _marketId)
+        external
+        nonReentrant
+        marketExists(_marketId)
+    {
+        Market storage m = markets[_marketId];
+        require(m.status == MarketStatus.Cancelled, "Market not cancelled");
+
+        Position storage pos = positions[_marketId][msg.sender];
+        uint256 totalCost = pos.yesCost + pos.noCost;
+        require(totalCost > 0, "No position to refund");
+
+        // Proportional refund: user's cost share × remaining pool
+        uint256 totalPool = m.yesPool + m.noPool;
+        uint256 refund;
+        
+        if (m.totalCostBasis > 0 && totalPool > 0) {
+            refund = (totalCost * totalPool) / m.totalCostBasis;
+            // Cap refund to available pool
+            if (refund > totalPool) {
+                refund = totalPool;
+            }
+        }
+
+        // Reduce totalCostBasis
+        m.totalCostBasis -= totalCost;
+
+        // Clear user's position entirely
+        pos.yesShares = 0;
+        pos.noShares = 0;
+        pos.yesCost = 0;
+        pos.noCost = 0;
+
+        if (refund > 0) {
+            // Deduct from pools proportionally
+            uint256 yesDeduct = (refund * m.yesPool) / totalPool;
+            uint256 noDeduct = refund - yesDeduct;
+            m.yesPool -= yesDeduct;
+            m.noPool -= noDeduct;
+
+            (bool success, ) = payable(msg.sender).call{value: refund}("");
+            require(success, "ETH transfer failed");
+        }
+
+        emit RefundClaimed(_marketId, msg.sender, refund);
+    }
+
     // ─── Liquidity Provider (LP) ───────────────────────────────
 
     function addLiquidity(uint256 _marketId, uint256 _deadline)
         external
         payable
+        nonReentrant
         marketExists(_marketId)
         marketOpen(_marketId)
         whenNotPaused
@@ -416,14 +544,12 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
             // Initial liquidity
             lpSharesMinted = msg.value;
             uint256 half = msg.value / 2;
-            m.yesPool = half;
-            m.noPool = msg.value - half;
-            m.yesShares = half;
-            m.noShares = msg.value - half;
+            m.yesPool += half;
+            m.noPool += (msg.value - half);
+            m.yesShares += half;
+            m.noShares += (msg.value - half);
         } else {
             // Subsequent liquidity: must be proportional to total pool value
-            // Using ETH value as base. User provides msg.value ETH.
-            // We mint relative to existing totalLpShares
             uint256 totalPool = m.yesPool + m.noPool;
             lpSharesMinted = (msg.value * m.totalLpShares) / totalPool;
             
@@ -445,6 +571,7 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
 
     function removeLiquidity(uint256 _marketId, uint256 _lpShares, uint256 _deadline)
         external
+        nonReentrant
         marketExists(_marketId)
         whenNotPaused
         checkDeadline(_deadline)
@@ -463,8 +590,17 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
 
         m.yesPool -= yesAmt;
         m.noPool -= noAmt;
-        m.yesShares -= yesAmt;
-        m.noShares -= noAmt;
+        // Defensive: only deduct shares if pool has enough (LP/trader share overlap)
+        if (m.yesShares >= yesAmt) {
+            m.yesShares -= yesAmt;
+        } else {
+            m.yesShares = 0;
+        }
+        if (m.noShares >= noAmt) {
+            m.noShares -= noAmt;
+        } else {
+            m.noShares = 0;
+        }
 
         (bool success, ) = payable(msg.sender).call{value: payout}("");
         require(success, "ETH transfer failed");
@@ -516,13 +652,12 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
 
     /**
      * @notice Get the current price of Yes outcome in basis points (0-10000)
-     * @dev CPAMM ratio calculation
      */
     function getYesPrice(uint256 _marketId) external view returns (uint256) {
         Market storage m = markets[_marketId];
         if (m.yesShares == 0 && m.noShares == 0) return 5000; 
         uint256 total = m.yesShares + m.noShares;
-        return (m.noShares * 10000) / total; // Price of YES is bounded by scarcity of YES (i.e., NO supply)
+        return (m.noShares * 10000) / total;
     }
 
     function getNoPrice(uint256 _marketId) external view returns (uint256) {
@@ -570,25 +705,20 @@ contract PredictionMarket is Initializable, PausableUpgradeable, OwnableUpgradea
 
     // Mathematical formula for xy=k buying
     function _quoteBuyExactIn(uint256 targetReserves, uint256 otherReserves, uint256 netValueIn) internal pure returns (uint256) {
-        // user pays netValueIn, getting netValueIn of both virtual shares.
-        // Needs to swap virtual otherShares for targetShares.
-        // dy = y - (k / (x + dx))
         uint256 k = targetReserves * otherReserves;
         uint256 newOtherReserves = otherReserves + netValueIn;
         uint256 newTargetReserves = k / newOtherReserves;
         
         uint256 targetSharesFromSwap = targetReserves - newTargetReserves;
-        return netValueIn + targetSharesFromSwap; // base virtual mint + swap proceeds
+        return netValueIn + targetSharesFromSwap;
     }
 
     // Mathematical formula for xy=k selling
     function _quoteSellExactIn(uint256 targetReserves, uint256 otherReserves, uint256 sharesIn) internal pure returns (uint256) {
-        // user returns sharesIn.
-        // dy = y - (k / (x + dx))  [where x = targetReserves, y = otherReserves]
         uint256 k = targetReserves * otherReserves;
         uint256 newTargetReserves = targetReserves + sharesIn;
         uint256 newOtherReserves = k / newTargetReserves;
         
-        return otherReserves - newOtherReserves; // ETH out is equal to the other virtual shares withdrawn
+        return otherReserves - newOtherReserves;
     }
 }

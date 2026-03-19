@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import MarketImage from '../MarketImage/MarketImage';
 import styles from './MarketCard.module.css';
 
 export interface MarketData {
@@ -26,16 +27,12 @@ const MarketCard = ({ market, onSelectOutcome }: MarketCardProps) => {
             style={{ cursor: 'pointer' }}
         >
             <div className={styles.header}>
-                <div className={styles.imagePlaceholder}>
-                    <img
-                        src={market.image}
-                        alt=""
-                        className={styles.image}
-                        onError={(e) => {
-                            e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/600px-No_image_available.svg.png';
-                        }}
-                    />
-                </div>
+                <MarketImage
+                    src={market.image}
+                    alt={market.title}
+                    category={market.category}
+                    size={60}
+                />
                 <div className={styles.meta}>
                     <div className={styles.category}>{market.category}</div>
                     <div className={styles.volume}>${market.volume} Vol.</div>

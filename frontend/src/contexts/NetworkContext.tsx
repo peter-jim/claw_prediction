@@ -3,28 +3,31 @@ import { createContext, useContext, useState, useEffect } from 'react';
 
 interface NetworkContextType {
     isMockMode: boolean;
-    toggleMockMode: () => void;
+    currentNetwork: string;
+    setNetwork: (networkId: string) => void;
 }
 
 const NetworkContext = createContext<NetworkContextType | undefined>(undefined);
 
 export const NetworkProvider = ({ children }: { children: ReactNode }) => {
-    // Check local storage for persistence
-    const [isMockMode, setIsMockMode] = useState(() => {
-        const saved = localStorage.getItem('isMockMode');
-        return saved ? JSON.parse(saved) : false;
+    const [currentNetwork, setCurrentNetwork] = useState(() => {
+        const saved = localStorage.getItem('currentNetwork');
+        return saved || 'hardhat';
     });
 
     useEffect(() => {
-        localStorage.setItem('isMockMode', JSON.stringify(isMockMode));
-    }, [isMockMode]);
+        localStorage.setItem('currentNetwork', currentNetwork);
+    }, [currentNetwork]);
 
-    const toggleMockMode = () => {
-        setIsMockMode((prev: boolean) => !prev);
+    // Both hardhat and sepolia are testnet / mock mode
+    const isMockMode = currentNetwork === 'hardhat' || currentNetwork === 'sepolia';
+
+    const setNetwork = (networkId: string) => {
+        setCurrentNetwork(networkId);
     };
 
     return (
-        <NetworkContext.Provider value={{ isMockMode, toggleMockMode }}>
+        <NetworkContext.Provider value={{ isMockMode, currentNetwork, setNetwork }}>
             {children}
         </NetworkContext.Provider>
     );

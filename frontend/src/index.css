@@ -20,6 +20,8 @@
   --accent-blue: #0047AB; /* Cobalt Blue */
   --accent-blue-hover: #0056D2;
   --accent-blue-glow: rgba(0, 71, 171, 0.25);
+  --accent-blue-bg: rgba(0, 71, 171, 0.1);
+  --accent-blue-border: rgba(0, 71, 171, 0.3);
   
   --accent-green: #50C878; /* Emerald Green */
   --accent-green-bg: rgba(80, 200, 120, 0.1);

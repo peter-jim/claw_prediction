@@ -1,19 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { PREDICTION_MARKET_ADDRESS, PREDICTION_MARKET_ABI } from '../../config/contract';
+import { useApi } from '../../services/api';
+import MarketImage from '../../components/MarketImage/MarketImage';
 import styles from './Admin.module.css';
 
 export default function Admin() {
-    const { address } = useAccount();
+    const api = useApi();
+    const { isConnected } = useAccount();
     const [markets, setMarkets] = useState<any[]>([]);
-
-    const { data: adminAddress } = useReadContract({
-        address: PREDICTION_MARKET_ADDRESS,
-        abi: PREDICTION_MARKET_ABI as any, // Cast to any to bypass strict type check for now since ABI is imported as json
-        functionName: 'admin',
-    });
-
-    const isOwner = address && adminAddress && address.toLowerCase() === (adminAddress as unknown as string).toLowerCase();
 
     // Form states
     const [title, setTitle] = useState('');
@@ -29,17 +24,16 @@ export default function Admin() {
     const { isSuccess: isResolveSuccess } = useWaitForTransactionReceipt({ hash: resolveHash });
 
     useEffect(() => {
-        fetch('http://localhost:3001/api/markets')
-            .then(res => res.json())
+        api.markets.list()
             .then(data => setMarkets(data))
             .catch(console.error);
     }, [isCreateSuccess, isResolveSuccess]);
 
-    if (!isOwner) {
+    if (!isConnected) {
         return (
             <div className={styles.container}>
                 <h1>Admin Panel</h1>
-                <p>Access Denied. You are not the contract owner.</p>
+                <p>Please connect your wallet to access the Admin panel.</p>
             </div>
         );
     }
@@ -88,7 +82,7 @@ export default function Admin() {
                 <div className={styles.marketList}>
                     {markets.filter(m => m.status === 0).map(m => (
                         <div key={m.id} className={styles.marketCard}>
-                            <img src={m.imageUrl} alt={m.title} className={styles.img} />
+                            <MarketImage src={m.imageUrl} alt={m.title} category={m.category} size={48} />
                             <div className={styles.details}>
                                 <span className={styles.id}>#{m.id}</span>
                                 <h3>{m.title}</h3>

@@ -160,31 +160,148 @@
     gap: 1rem;
 }
 
-.mockToggle {
+/* Network Dropdown */
+.networkDropdown {
+    position: relative;
+}
+
+.networkBtn {
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.875rem;
-    font-weight: 700;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: all 0.2s ease;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
 }
 
-.mockToggle:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
+.networkBtn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-color-hover);
+    color: var(--text-primary);
 }
 
-.mockActive {
-    background: rgba(239, 68, 68, 0.1); /* Red tint for Testnet/Mock */
-    border-color: rgba(239, 68, 68, 0.3);
-    color: var(--accent-red-bright);
-    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+.networkIcon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.networkLabel {
+    white-space: nowrap;
+}
+
+.chevron {
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+.chevronOpen {
+    transform: rotate(180deg);
+}
+
+.dropdownMenu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 240px;
+    background: rgba(10, 12, 16, 0.95);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.5);
+    padding: 0.5rem;
+    z-index: 200;
+    animation: dropdownFade 0.2s ease;
+}
+
+@keyframes dropdownFade {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dropdownHeader {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    padding: 0.5rem 0.75rem 0.375rem;
+}
+
+.dropdownItem {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+    position: relative;
+}
+
+.dropdownItem:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+}
+
+.dropdownActive {
+    background: var(--accent-blue-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+.dropdownDisabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.dropdownItemIcon {
+    font-size: 1.125rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.dropdownItemLabel {
+    flex: 1;
+}
+
+.dropdownTag {
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border-color);
+}
+
+.activeDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green-glow);
+    flex-shrink: 0;
 }
 
 .loginBtn {
@@ -244,6 +361,10 @@
 
 /* Responsive */
 @media (max-width: 900px) {
+    .mobileMenuBtn {
+        display: flex;
+    }
+
     .navLinks,
     .center {
         display: none;

@@ -32,23 +32,20 @@ const Portfolio = () => {
     const fetchPortfolio = () => {
         if (!address) return;
         setLoading(true);
-        api.portfolio.get(address)
-            .then(data => {
-                // We need the market status as well to know if they can claim.
-                // Fetch full market data to merge it with positions.
-                return fetch('http://localhost:3001/api/markets')
-                    .then(res => res.json())
-                    .then(markets => {
-                        const mergedPositions = data.positions.map((pos: any) => {
-                            const market = markets.find((m: any) => m.id === pos.marketId);
-                            return {
-                                ...pos,
-                                marketStatus: market ? market.status : 0,
-                                resolvedOutcome: market ? market.resolvedOutcome : 0
-                            };
-                        });
-                        setPositions(mergedPositions);
-                    });
+        Promise.all([
+            api.portfolio.get(address),
+            api.markets.list()
+        ])
+            .then(([data, markets]) => {
+                const mergedPositions = data.positions.map((pos: any) => {
+                    const market = markets.find((m: any) => m.id === pos.marketId);
+                    return {
+                        ...pos,
+                        marketStatus: market ? market.status : 0,
+                        resolvedOutcome: market ? market.resolvedOutcome : 0
+                    };
+                });
+                setPositions(mergedPositions);
             })
             .catch(err => console.error('Failed to load portfolio:', err))
             .finally(() => setLoading(false));
